@@ -6,7 +6,8 @@ class ActivationSuccessScreen extends StatefulWidget {
   const ActivationSuccessScreen({super.key});
 
   @override
-  State<ActivationSuccessScreen> createState() => _ActivationSuccessScreenState();
+  State<ActivationSuccessScreen> createState() =>
+      _ActivationSuccessScreenState();
 }
 
 class _ActivationSuccessScreenState extends State<ActivationSuccessScreen> {
@@ -33,7 +34,8 @@ class _ActivationSuccessScreenState extends State<ActivationSuccessScreen> {
               width: double.infinity,
               decoration: const BoxDecoration(
                 image: DecorationImage(
-                  image: NetworkImage("https://via.placeholder.com/600x300"), // Replace with image_58cda4 content
+                  image: NetworkImage(
+                      "https://via.placeholder.com/600x300"), // Replace with image_58cda4 content
                   fit: BoxFit.cover,
                 ),
               ),
@@ -61,7 +63,8 @@ class _ActivationSuccessScreenState extends State<ActivationSuccessScreen> {
                   ),
                   const Text("I Accept this "),
                   const Text("Terms and Conditions",
-                      style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                      style: TextStyle(
+                          color: Colors.blue, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
@@ -71,12 +74,25 @@ class _ActivationSuccessScreenState extends State<ActivationSuccessScreen> {
               child: ElevatedButton(
                 onPressed: isAccepted ? () {} : null, // Disable if not accepted
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: isAccepted ? kPrimaryOrange : kPrimaryOrange.withOpacity(0.5),
+                  backgroundColor: isAccepted
+                      ? kPrimaryOrange
+                      : kPrimaryOrange.withOpacity(0.5),
                   minimumSize: const Size(double.infinity, 55),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15)),
                 ),
-                child: const Text("Continue",
-                    style: TextStyle(color: Colors.white, fontSize: 18)),
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pushNamed(context, '/dashboard'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kPrimaryOrange,
+                    minimumSize: const Size(double.infinity, 55),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text("Continue",
+                      style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
               ),
             ),
           ],
