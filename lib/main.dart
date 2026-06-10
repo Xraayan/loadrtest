@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:loadr/screens/dashboard_screen.dart';
 import 'package:loadr/screens/ledger_screen.dart';
+import 'package:loadr/screens/all_trip_screen.dart';
 import 'constants.dart';
 import 'screens/activation_success_screen.dart';
 import 'screens/document_upload_screen.dart';
@@ -34,7 +35,8 @@ class LoadRApp extends StatelessWidget {
       // Set the initial screen
 
       // home: const LandingScreen(),
-      home: const DashboardScreen(), // For Testing purposes
+
+      home: const AllTripScreen(), // For Testing purposes
 
       // Define named routes for cleaner navigation
       routes: {
@@ -48,6 +50,7 @@ class LoadRApp extends StatelessWidget {
         '/success': (context) => const ActivationSuccessScreen(),
         '/dashboard': (context) => const DashboardScreen(),
         '/ledger': (context) => const LedgerScreen(),
+        '/all-trips': (context) => const AllTripScreen(),
       },
     );
   }

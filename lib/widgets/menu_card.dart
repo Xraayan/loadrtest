@@ -13,7 +13,11 @@ class MenuCard extends StatelessWidget {
       elevation: 0,
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () {},
+        onTap: () {
+          if (data.route != null) {
+            Navigator.of(context).pushNamed(data.route!);
+          }
+        },
         child: Container(
           decoration: BoxDecoration(
             color: Colors.white,
