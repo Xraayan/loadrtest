@@ -22,6 +22,7 @@ class _ScrollableScreenState extends State<ScrollableScreen> {
       icon: Icons.local_shipping_rounded,
       iconColor: const Color(0xFFFF6B4A),
       bgColor: const Color(0xFFFFECE8),
+      route: '/all-trips',
     ),
     MenuCardData(
       title: 'All Trips',
@@ -30,6 +31,7 @@ class _ScrollableScreenState extends State<ScrollableScreen> {
       icon: Icons.swap_vert_circle_rounded,
       iconColor: const Color(0xFFD44ED0),
       bgColor: const Color(0xFFF9E8FF),
+      route: '/all-trips',
     ),
     MenuCardData(
       title: 'Expenses',
@@ -62,6 +64,7 @@ class _ScrollableScreenState extends State<ScrollableScreen> {
       icon: Icons.book_rounded,
       iconColor: const Color(0xFFE91E63),
       bgColor: const Color(0xFFFFE8F0),
+      route: '/ledger',
     ),
   ];
   @override

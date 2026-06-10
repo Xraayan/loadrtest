@@ -32,6 +32,8 @@ dependencies:
     sdk: flutter
   pinput: ^5.0.0 # For the OTP boxes
   google_fonts: ^6.2.1
+  http: ^1.1.0 # For API calls
+  shared_preferences: ^2.2.2 # For storing auth token
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
