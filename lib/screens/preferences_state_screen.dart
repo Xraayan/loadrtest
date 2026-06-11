@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:loadr/constants.dart';
 import 'package:loadr/widgets/onboarding_stepper.dart';
