@@ -22,15 +22,16 @@ class _ScrollableScreenState extends State<ScrollableScreen> {
       icon: Icons.local_shipping_rounded,
       iconColor: const Color(0xFFFF6B4A),
       bgColor: const Color(0xFFFFECE8),
+      route: '/new-trips',
     ),
     MenuCardData(
-      title: 'All Trips',
-      description:
-          'Start your Trip Today In publishing and graphic design. Lorem ipsum is a placeholder text commonly.',
-      icon: Icons.swap_vert_circle_rounded,
-      iconColor: const Color(0xFFD44ED0),
-      bgColor: const Color(0xFFF9E8FF),
-    ),
+        title: 'All Trips',
+        description:
+            'Start your Trip Today In publishing and graphic design. Lorem ipsum is a placeholder text commonly.',
+        icon: Icons.swap_vert_circle_rounded,
+        iconColor: const Color(0xFFD44ED0),
+        bgColor: const Color(0xFFF9E8FF),
+        route: '/all-trips'),
     MenuCardData(
       title: 'Expenses',
       description:
