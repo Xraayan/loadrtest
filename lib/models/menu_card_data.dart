@@ -6,12 +6,14 @@ class MenuCardData {
   final IconData icon;
   final Color iconColor;
   final Color bgColor;
+  final String? route;
 
-  const MenuCardData({
+  MenuCardData({
     required this.title,
     required this.description,
     required this.icon,
     required this.iconColor,
     required this.bgColor,
+    this.route,
   });
 }
