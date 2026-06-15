@@ -22,7 +22,7 @@ class _ScrollableScreenState extends State<ScrollableScreen> {
       icon: Icons.local_shipping_rounded,
       iconColor: const Color(0xFFFF6B4A),
       bgColor: const Color(0xFFFFECE8),
-      route: '/all-trips',
+      route: '/new-trips',
     ),
     MenuCardData(
       title: 'All Trips',

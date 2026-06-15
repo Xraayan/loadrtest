@@ -8,7 +8,7 @@ class MenuCardData {
   final Color bgColor;
   final String? route;
 
-  const MenuCardData({
+  MenuCardData({
     required this.title,
     required this.description,
     required this.icon,

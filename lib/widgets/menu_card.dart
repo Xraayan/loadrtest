@@ -3,7 +3,7 @@ import 'package:loadr/models/menu_card_data.dart';
 
 class MenuCard extends StatelessWidget {
   final MenuCardData data;
-  const MenuCard({required this.data});
+  const MenuCard({super.key, required this.data});
 
   @override
   Widget build(BuildContext context) {
