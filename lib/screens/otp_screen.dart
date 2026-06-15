@@ -15,7 +15,7 @@ class _OTPScreenState extends State<OTPScreen> {
 
   void _handleVerifyOtp() async {
     String otp = _otpControllers.map((c) => c.text).join();
-    
+
     if (otp.length != 4) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter complete OTP')),
@@ -30,7 +30,7 @@ class _OTPScreenState extends State<OTPScreen> {
       if (phone == null) throw Exception('Phone number not found');
 
       final response = await ApiService.verifyOtp(phone, otp);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Authentication successful')),
@@ -61,7 +61,8 @@ class _OTPScreenState extends State<OTPScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 50),
-            const Text("Enter OTP", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+            const Text("Enter OTP",
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
             Text(
               "Please enter the 4 digit OTP sent on +91${phone?.replaceRange(0, phone.length - 4, '*' * (phone.length - 4)) ?? '****'}.",
               style: const TextStyle(color: Colors.grey),
@@ -78,7 +79,8 @@ class _OTPScreenState extends State<OTPScreen> {
                 backgroundColor: kPrimaryOrange,
                 foregroundColor: Colors.white,
                 minimumSize: const Size(double.infinity, 55),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
               child: _isLoading
                   ? const SizedBox(
@@ -92,7 +94,10 @@ class _OTPScreenState extends State<OTPScreen> {
             Center(
               child: Text.rich(TextSpan(children: [
                 const TextSpan(text: "Didn't receive the code? "),
-                TextSpan(text: "Resend (30s)", style: TextStyle(color: kPrimaryOrange, fontWeight: FontWeight.bold)),
+                TextSpan(
+                    text: "Resend (30s)",
+                    style: TextStyle(
+                        color: kPrimaryOrange, fontWeight: FontWeight.bold)),
               ])),
             )
           ],

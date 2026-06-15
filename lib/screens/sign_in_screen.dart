@@ -54,8 +54,10 @@ class _SignInScreenState extends State<SignInScreen> {
           children: [
             const SizedBox(height: 50),
             const Icon(Icons.local_shipping, color: kPrimaryOrange, size: 40),
-            const Text("Welcome LoadR", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
-            const Text("Please enter your sign in details.", style: TextStyle(color: Colors.grey, fontSize: 16)),
+            const Text("Welcome LoadR",
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+            const Text("Please enter your sign in details.",
+                style: TextStyle(color: Colors.grey, fontSize: 16)),
             const SizedBox(height: 50),
             TextField(
               controller: _phoneController,
@@ -64,8 +66,10 @@ class _SignInScreenState extends State<SignInScreen> {
               decoration: InputDecoration(
                 labelText: "Phone Number",
                 hintText: "Enter Phone Number",
-                suffixIcon: const Icon(Icons.phone_outlined, color: Colors.grey),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                suffixIcon:
+                    const Icon(Icons.phone_outlined, color: Colors.grey),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
             const Spacer(),
@@ -74,9 +78,13 @@ class _SignInScreenState extends State<SignInScreen> {
                 TextSpan(
                   text: "By clicking Next, you agree with our\n",
                   children: [
-                    TextSpan(text: "Terms and Conditions", style: TextStyle(fontWeight: FontWeight.bold)),
+                    TextSpan(
+                        text: "Terms and Conditions",
+                        style: TextStyle(fontWeight: FontWeight.bold)),
                     TextSpan(text: " and "),
-                    TextSpan(text: "Privacy Policy", style: TextStyle(fontWeight: FontWeight.bold)),
+                    TextSpan(
+                        text: "Privacy Policy",
+                        style: TextStyle(fontWeight: FontWeight.bold)),
                   ],
                 ),
                 textAlign: TextAlign.center,
@@ -90,7 +98,8 @@ class _SignInScreenState extends State<SignInScreen> {
                 backgroundColor: kPrimaryOrange,
                 foregroundColor: Colors.white,
                 minimumSize: const Size(double.infinity, 55),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15)),
               ),
               child: _isLoading
                   ? const SizedBox(
