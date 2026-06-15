@@ -25,13 +25,14 @@ class _ScrollableScreenState extends State<ScrollableScreen> {
       route: '/new-trips',
     ),
     MenuCardData(
-        title: 'All Trips',
-        description:
-            'Start your Trip Today In publishing and graphic design. Lorem ipsum is a placeholder text commonly.',
-        icon: Icons.swap_vert_circle_rounded,
-        iconColor: const Color(0xFFD44ED0),
-        bgColor: const Color(0xFFF9E8FF),
-        route: '/all-trips'),
+      title: 'All Trips',
+      description:
+          'Start your Trip Today In publishing and graphic design. Lorem ipsum is a placeholder text commonly.',
+      icon: Icons.swap_vert_circle_rounded,
+      iconColor: const Color(0xFFD44ED0),
+      bgColor: const Color(0xFFF9E8FF),
+      route: '/all-trips',
+    ),
     MenuCardData(
       title: 'Expenses',
       description:
@@ -63,6 +64,7 @@ class _ScrollableScreenState extends State<ScrollableScreen> {
       icon: Icons.book_rounded,
       iconColor: const Color(0xFFE91E63),
       bgColor: const Color(0xFFFFE8F0),
+      route: '/ledger',
     ),
   ];
   @override

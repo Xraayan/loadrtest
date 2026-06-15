@@ -34,10 +34,7 @@ class LoadRApp extends StatelessWidget {
         useMaterial3: true,
       ),
       // Set the initial screen
-
-      // home: const LandingScreen(),
-
-      home: const AllTripScreen(), // For Testing purposes
+      home: const LandingScreen(),
 
       // Define named routes for cleaner navigation
       routes: {
