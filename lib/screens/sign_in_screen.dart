@@ -1,8 +1,48 @@
 import 'package:flutter/material.dart';
 import '../constants.dart';
+import '../services/api_service.dart';
 
-class SignInScreen extends StatelessWidget {
+class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
+
+  @override
+  State<SignInScreen> createState() => _SignInScreenState();
+}
+
+class _SignInScreenState extends State<SignInScreen> {
+  final _phoneController = TextEditingController();
+  bool _isLoading = false;
+
+  void _handleSignIn() async {
+    if (_phoneController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter phone number')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      await ApiService.signIn(_phoneController.text);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('OTP sent successfully')),
+        );
+        Navigator.pushNamed(context, '/otp', arguments: _phoneController.text);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +58,9 @@ class SignInScreen extends StatelessWidget {
             const Text("Please enter your sign in details.", style: TextStyle(color: Colors.grey, fontSize: 16)),
             const SizedBox(height: 50),
             TextField(
+              controller: _phoneController,
               keyboardType: TextInputType.phone,
+              enabled: !_isLoading,
               decoration: InputDecoration(
                 labelText: "Phone Number",
                 hintText: "Enter Phone Number",
@@ -43,18 +85,30 @@ class SignInScreen extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: () => Navigator.pushNamed(context, '/otp'),
+              onPressed: _isLoading ? null : _handleSignIn,
               style: ElevatedButton.styleFrom(
                 backgroundColor: kPrimaryOrange,
                 foregroundColor: Colors.white,
                 minimumSize: const Size(double.infinity, 55),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
               ),
-              child: const Text("Sign In", style: TextStyle(fontSize: 18)),
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(color: Colors.white),
+                    )
+                  : const Text("Sign In", style: TextStyle(fontSize: 18)),
             ),
           ],
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    super.dispose();
   }
 }
