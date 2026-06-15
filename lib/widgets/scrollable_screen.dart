@@ -57,13 +57,13 @@ class _ScrollableScreenState extends State<ScrollableScreen> {
       bgColor: const Color(0xFFFFF3E0),
     ),
     MenuCardData(
-      title: 'Ledger',
-      description:
-          'Start your Trip Today In publishing and graphic design. Lorem ipsum is a placeholder text commonly.',
-      icon: Icons.book_rounded,
-      iconColor: const Color(0xFFE91E63),
-      bgColor: const Color(0xFFFFE8F0),
-    ),
+        title: 'Ledger',
+        description:
+            'Start your Trip Today In publishing and graphic design. Lorem ipsum is a placeholder text commonly.',
+        icon: Icons.book_rounded,
+        iconColor: const Color(0xFFE91E63),
+        bgColor: const Color(0xFFFFE8F0),
+        route: '/ledger'),
   ];
   @override
   Widget build(BuildContext context) {

@@ -37,7 +37,7 @@ class LoadRApp extends StatelessWidget {
 
       // home: const LandingScreen(),
 
-      home: const AllTripScreen(), // For Testing purposes
+      home: const DashboardScreen(), // For Testing purposes
 
       // Define named routes for cleaner navigation
       routes: {
