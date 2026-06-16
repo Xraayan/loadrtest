@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:loadr/screens/dashboard_screen.dart';
 import 'package:loadr/widgets/bottom_nav.dart';
 
 void main() {
@@ -58,12 +59,14 @@ class _WalletDepositScreenState extends State<WalletDepositScreen> {
       backgroundColor: const Color(0xFFF2F2F7),
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 0,
-        leadingWidth: 56,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black87, size: 24),
-          onPressed: () => Navigator.maybePop(context),
-        ),
+            onPressed: () => Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const DashboardScreen(),
+                ),
+                (route) => false),
+            icon: const Icon(Icons.arrow_back)),
         title: const Text(
           'Wallet',
           style: TextStyle(
