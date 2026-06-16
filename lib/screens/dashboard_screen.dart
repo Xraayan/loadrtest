@@ -11,7 +11,6 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class DashboardScreenState extends State<DashboardScreen> {
-  int _selectedIndex = 0;
   bool _isOnline = true;
 
   @override
@@ -180,8 +179,7 @@ class DashboardScreenState extends State<DashboardScreen> {
 
       // ── Bottom Navigation Bar ──────────────────────────────────────────────
       bottomNavigationBar: BottomNav(
-        selectedIndex: _selectedIndex,
-        onTap: (i) => setState(() => _selectedIndex = i),
+        selectedIndex: 0,
       ),
     );
   }
