@@ -1,8 +1,62 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../constants.dart';
+import '../services/api_service.dart';
 
-class LocationScreen extends StatelessWidget {
+class LocationScreen extends StatefulWidget {
   const LocationScreen({super.key});
+
+  @override
+  State<LocationScreen> createState() => _LocationScreenState();
+}
+
+class _LocationScreenState extends State<LocationScreen> {
+  bool _isLoading = false;
+
+  Future<void> _handleUseLocation() async {
+    setState(() => _isLoading = true);
+
+    try {
+      // Get stored UID
+      final prefs = await SharedPreferences.getInstance();
+      final uid = prefs.getString('uid');
+
+      if (uid == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Simulated location - In production, use geolocator package
+      final location = {
+        'latitude': 28.6139,
+        'longitude': 77.2090,
+        'address': 'New Delhi, India',
+      };
+
+      // Send location to backend
+      await ApiService.updateLocation(uid, location);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location saved')),
+        );
+        Navigator.pushNamed(context, '/driver-details');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _handleSkip() {
+    Navigator.pushNamed(context, '/driver-details');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -12,7 +66,6 @@ class LocationScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Ensure you have this asset or use an Icon as a placeholder
             const Icon(Icons.location_on, size: 150, color: kPrimaryOrange),
             const SizedBox(height: 40),
             const Text("Enable Your Location",
@@ -24,11 +77,7 @@ class LocationScreen extends StatelessWidget {
                 style: TextStyle(color: Colors.grey)),
             const SizedBox(height: 50),
             ElevatedButton(
-              // UPDATED: Navigates to the first step of the onboarding sequence
-              /*============================================================
-              | onPressed: () => Navigator.pushNamed(context, '/vehicles'),|
-              ============================================================*/
-              onPressed: () => Navigator.pushNamed(context, '/driver-details'),
+              onPressed: _isLoading ? null : _handleUseLocation,
               style: ElevatedButton.styleFrom(
                 backgroundColor: kPrimaryOrange,
                 foregroundColor: Colors.white,
@@ -36,14 +85,16 @@ class LocationScreen extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(15)),
               ),
-              child: const Text("Use current location"),
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(color: Colors.white),
+                    )
+                  : const Text("Use current location"),
             ),
             TextButton(
-              // UPDATED: Also navigates forward if they skip
-              /*============================================================
-              | onPressed: () => Navigator.pushNamed(context, '/vehicles'),|
-              ============================================================*/
-              onPressed: () => Navigator.pushNamed(context, '/driver-details'),
+              onPressed: _isLoading ? null : _handleSkip,
               child: const Text("Skip for now",
                   style: TextStyle(color: Colors.grey)),
             ),

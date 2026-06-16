@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_service.dart';
 
 class DriverDetailsScreen extends StatefulWidget {
   const DriverDetailsScreen({super.key});
@@ -14,6 +16,44 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> {
   final _vehicleNumberController = TextEditingController();
 
   bool _isLoading = false;
+
+  Future<void> _handleSubmit() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final uid = prefs.getString('uid');
+
+      if (uid == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Update driver profile
+      await ApiService.updateDriverProfile(uid, {
+        'name': _driverNameController.text.trim(),
+        'vehicle_number': _vehicleNumberController.text.trim().toUpperCase(),
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Details saved successfully')),
+        );
+        Navigator.pushNamed(context, '/vehicles');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -222,7 +262,7 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> {
       width: double.infinity,
       height: 52,
       child: ElevatedButton(
-        onPressed: () => Navigator.pushNamed(context, '/vehicles'),
+        onPressed: _isLoading ? null : _handleSubmit,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFE64A19),
           disabledBackgroundColor: const Color(0xFFE64A19).withOpacity(0.6),

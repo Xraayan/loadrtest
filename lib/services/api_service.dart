@@ -119,6 +119,69 @@ class ApiService {
     }
   }
 
+  // Update location
+  static Future<void> updateLocation(String uid, Map<String, dynamic> location) async {
+    try {
+      final token = await getAuthToken();
+      final response = await http.post(
+        Uri.parse('$baseUrl/location/update?uid=$uid'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(location),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to update location');
+      }
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  // Get available vehicles
+  static Future<List<dynamic>> getVehicles() async {
+    try {
+      final token = await getAuthToken();
+      final response = await http.get(
+        Uri.parse('$baseUrl/vehicles/'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed to get vehicles');
+      }
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  // Assign vehicle to driver
+  static Future<void> assignVehicle(String uid, String vehicleNumber) async {
+    try {
+      final token = await getAuthToken();
+      final response = await http.post(
+        Uri.parse('$baseUrl/vehicles/$uid/assign?vehicle_number=$vehicleNumber'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to assign vehicle');
+      }
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
   // Logout
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
