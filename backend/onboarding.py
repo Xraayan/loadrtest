@@ -1,7 +1,7 @@
-import time
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from firebase_admin import db
+from supabase_config import get_supabase
 
 
 DRIVER_ONBOARDING_STEPS = (
@@ -10,6 +10,27 @@ DRIVER_ONBOARDING_STEPS = (
     "preferences_selected",
     "documents_uploaded",
 )
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _is_missing_column_error(error: Exception) -> bool:
+    message = str(error)
+    return "PGRST204" in message and "schema cache" in message
+
+
+def _get_profile(uid: str) -> Optional[Dict[str, Any]]:
+    return (
+        get_supabase()
+        .table("profiles")
+        .select("*")
+        .eq("firebase_uid", uid)
+        .maybe_single()
+        .execute()
+        .data
+    )
 
 
 def get_onboarding_next(user: Dict[str, Any]) -> str:
@@ -37,10 +58,7 @@ def is_profile_complete(user: Dict[str, Any]) -> bool:
 
 
 def build_onboarding_state(uid: str, user: Dict[str, Any]) -> Dict[str, Any]:
-    steps = {
-        step: bool(user.get(step))
-        for step in DRIVER_ONBOARDING_STEPS
-    }
+    steps = {step: bool(user.get(step)) for step in DRIVER_ONBOARDING_STEPS}
     return {
         "uid": uid,
         "role": user.get("role"),
@@ -54,8 +72,7 @@ def sync_onboarding_state(
     uid: str,
     user: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    user_ref = db.reference(f"users/{uid}")
-    current_user = user if user is not None else user_ref.get()
+    current_user = user if user is not None else _get_profile(uid)
     if not current_user:
         return {}
 
@@ -67,24 +84,36 @@ def sync_onboarding_state(
         updates["onboarding_next"] = state["onboarding_next"]
 
     if updates:
-        updates["updated_at"] = int(time.time())
-        user_ref.update(updates)
-        current_user.update(updates)
+        updates["updated_at"] = _now()
+        try:
+            get_supabase().table("profiles").update(updates).eq("firebase_uid", uid).execute()
+            current_user.update(updates)
+        except Exception as e:
+            if not _is_missing_column_error(e):
+                raise
+            state["warning"] = "Rerun backend/supabase_schema.sql to add onboarding columns."
+            return state
 
     return build_onboarding_state(uid, current_user)
 
 
 def update_onboarding_progress(uid: str, updates: Dict[str, Any]) -> Dict[str, Any]:
-    now = int(time.time())
-    user_ref = db.reference(f"users/{uid}")
-    current_user = user_ref.get()
+    current_user = _get_profile(uid)
     if not current_user:
         return {}
 
     updates = {
         **updates,
-        "updated_at": now,
+        "updated_at": _now(),
     }
-    user_ref.update(updates)
-    current_user.update(updates)
+    try:
+        get_supabase().table("profiles").update(updates).eq("firebase_uid", uid).execute()
+        current_user.update(updates)
+    except Exception as e:
+        if not _is_missing_column_error(e):
+            raise
+        state = build_onboarding_state(uid, current_user)
+        state["warning"] = "Rerun backend/supabase_schema.sql to add onboarding columns."
+        return state
+
     return sync_onboarding_state(uid, current_user)

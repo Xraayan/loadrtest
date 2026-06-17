@@ -1,2 +1,0 @@
-D:/GitHub/LoadR/android/app/.cxx/Debug/31f424sv/arm64-v8a/CMakeFiles/edit_cache.dir
-D:/GitHub/LoadR/android/app/.cxx/Debug/31f424sv/arm64-v8a/CMakeFiles/rebuild_cache.dir

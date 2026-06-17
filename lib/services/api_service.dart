@@ -3,16 +3,18 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://localhost:8000/api';
-  
+  static const String baseUrl = 'http://10.0.2.2:8000/api';
+
   // Sign in with phone number
   static Future<Map<String, dynamic>> signIn(String phone) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/signin'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'phone': phone}),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/signin'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'phone': phone}),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -25,13 +27,16 @@ class ApiService {
   }
 
   // Verify OTP and get token
-  static Future<Map<String, dynamic>> verifyOtp(String phone, String otp) async {
+  static Future<Map<String, dynamic>> verifyOtp(
+      String phone, String otp) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/verify-otp'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'phone': phone, 'otp': otp}),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/verify-otp'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'phone': phone, 'otp': otp}),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -77,17 +82,20 @@ class ApiService {
   }
 
   // Update driver profile
-  static Future<void> updateDriverProfile(String uid, Map<String, dynamic> data) async {
+  static Future<void> updateDriverProfile(
+      String uid, Map<String, dynamic> data) async {
     try {
       final token = await getAuthToken();
-      final response = await http.put(
-        Uri.parse('$baseUrl/drivers/$uid'),
-        headers: {
-          'Content-Type': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode(data),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/drivers/$uid'),
+            headers: {
+              'Content-Type': 'application/json',
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode(data),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode != 200) {
         throw Exception('Failed to update profile');
@@ -119,18 +127,99 @@ class ApiService {
     }
   }
 
-  // Update location
-  static Future<void> updateLocation(String uid, Map<String, dynamic> location) async {
+  // Get open jobs/loads
+  static Future<List<dynamic>> getJobs({
+    String? state,
+    String? city,
+    String? vehicleType,
+  }) async {
     try {
       final token = await getAuthToken();
-      final response = await http.post(
-        Uri.parse('$baseUrl/location/update?uid=$uid'),
+      final query = <String, String>{
+        if (state != null && state.trim().isNotEmpty) 'state': state.trim(),
+        if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
+        if (vehicleType != null && vehicleType.trim().isNotEmpty)
+          'vehicle_type': vehicleType.trim(),
+      };
+      final uri = Uri.parse('$baseUrl/jobs/').replace(queryParameters: query);
+      final response = await http.get(
+        uri,
         headers: {
           'Content-Type': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
         },
-        body: jsonEncode(location),
       ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed to get jobs: ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  // Accept a job/load and create a trip
+  static Future<Map<String, dynamic>> acceptJob(
+      String uid, String jobId) async {
+    try {
+      final token = await getAuthToken();
+      final response = await http.post(
+        Uri.parse('$baseUrl/jobs/$jobId/accept/$uid'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed to accept job: ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  // Get ledger summary
+  static Future<Map<String, dynamic>> getLedger(String uid) async {
+    try {
+      final token = await getAuthToken();
+      final response = await http.get(
+        Uri.parse('$baseUrl/ledger/$uid'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed to get ledger: ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  // Update location
+  static Future<void> updateLocation(
+      String uid, Map<String, dynamic> location) async {
+    try {
+      final token = await getAuthToken();
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/location/update?uid=$uid'),
+            headers: {
+              'Content-Type': 'application/json',
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode(location),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode != 200) {
         throw Exception('Failed to update location');
@@ -166,8 +255,11 @@ class ApiService {
   static Future<void> assignVehicle(String uid, String vehicleNumber) async {
     try {
       final token = await getAuthToken();
+      final uri = Uri.parse('$baseUrl/vehicles/$uid/assign').replace(
+        queryParameters: {'vehicle_number': vehicleNumber},
+      );
       final response = await http.post(
-        Uri.parse('$baseUrl/vehicles/$uid/assign?vehicle_number=$vehicleNumber'),
+        uri,
         headers: {
           'Content-Type': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
@@ -175,7 +267,78 @@ class ApiService {
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode != 200) {
-        throw Exception('Failed to assign vehicle');
+        throw Exception('Failed to assign vehicle: ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  // Save driver preferences
+  static Future<void> updatePreferences(
+    String uid,
+    List<String> preferredStates, {
+    String? preferredVehicleType,
+  }) async {
+    try {
+      final token = await getAuthToken();
+      final body = <String, dynamic>{
+        'preferred_states': preferredStates,
+        if (preferredVehicleType != null)
+          'preferred_vehicle_type': preferredVehicleType,
+      };
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/preferences/$uid'),
+            headers: {
+              'Content-Type': 'application/json',
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to save preferences: ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  // Upload driver license document
+  static Future<void> uploadDocument(
+    String uid, {
+    required String filePath,
+    required String filename,
+  }) async {
+    try {
+      final token = await getAuthToken();
+      final uri = Uri.parse('$baseUrl/documents/upload').replace(
+        queryParameters: {
+          'uid': uid,
+          'doc_type': 'license',
+        },
+      );
+      final request = http.MultipartRequest('POST', uri);
+      if (token != null) {
+        request.headers['Authorization'] = 'Bearer $token';
+      }
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'file',
+          filePath,
+          filename: filename,
+        ),
+      );
+
+      final streamedResponse = await request.send().timeout(
+            const Duration(seconds: 20),
+          );
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to upload document: ${response.body}');
       }
     } catch (e) {
       throw Exception('Error: $e');

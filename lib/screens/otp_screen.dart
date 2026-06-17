@@ -29,7 +29,7 @@ class _OTPScreenState extends State<OTPScreen> {
       final phone = ModalRoute.of(context)?.settings.arguments as String?;
       if (phone == null) throw Exception('Phone number not found');
 
-      final response = await ApiService.verifyOtp(phone, otp);
+      await ApiService.verifyOtp(phone, otp);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -56,6 +56,7 @@ class _ScrollableScreenState extends State<ScrollableScreen> {
       icon: Icons.add_road_rounded,
       iconColor: const Color(0xFFFF9800),
       bgColor: const Color(0xFFFFF3E0),
+      route: '/new-trips',
     ),
     MenuCardData(
         title: 'Ledger',

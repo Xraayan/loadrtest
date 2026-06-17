@@ -1,11 +1,11 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from firebase_admin import db
 from pydantic import BaseModel
 
 from dependencies import CurrentUser, get_current_user, require_current_user_uid
 from onboarding import update_onboarding_progress
+from supabase_config import get_supabase
 
 router = APIRouter()
 
@@ -20,10 +20,18 @@ def get_preferences(uid: str, current_user: CurrentUser = Depends(get_current_us
     """Get driver preferences."""
     require_current_user_uid(uid, current_user)
     try:
-        preferences = db.reference(f"users/{uid}/preferences").get()
-        if not preferences:
-            return {}
-        return preferences
+        profile = (
+            get_supabase()
+            .table("profiles")
+            .select("preferences")
+            .eq("firebase_uid", uid)
+            .maybe_single()
+            .execute()
+            .data
+        )
+        if not profile:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        return profile.get("preferences") or {}
     except HTTPException:
         raise
     except Exception as e:
@@ -52,9 +60,18 @@ def update_preferences(
 
         data = preferences.model_dump(exclude_unset=True)
         data["preferred_states"] = preferred_states
-        db.reference(f"users/{uid}/preferences").set(data)
-        onboarding = update_onboarding_progress(uid, {"preferences_selected": True})
 
+        response = (
+            get_supabase()
+            .table("profiles")
+            .update({"preferences": data})
+            .eq("firebase_uid", uid)
+            .execute()
+        )
+        if not response.data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        onboarding = update_onboarding_progress(uid, {"preferences_selected": True})
         return {
             "message": "Preferences updated",
             "preferences": data,
@@ -64,3 +81,4 @@ def update_preferences(
         raise
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+

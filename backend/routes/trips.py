@@ -1,10 +1,13 @@
+from datetime import datetime, timezone
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
-from firebase_admin import db
-from typing import Optional, List
-import time
+
+from supabase_config import get_supabase
 
 router = APIRouter()
+
 
 class Trip(BaseModel):
     pickup_location: str
@@ -14,51 +17,101 @@ class Trip(BaseModel):
     status: str = "pending"
     amount: Optional[float] = None
 
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _format_trip(trip: dict) -> dict:
+    return {
+        "trip_id": trip.get("id"),
+        "driver_id": trip.get("driver_uid"),
+        **trip,
+    }
+
+
 @router.post("/")
 def create_trip(uid: str, trip: Trip):
-    """Create a new trip"""
+    """Create a new trip."""
     try:
-        trip_ref = db.reference("trips").push()
-        trip_data = trip.dict()
-        trip_data["driver_id"] = uid
-        trip_data["created_at"] = int(time.time())
-        trip_ref.set(trip_data)
-        return {"message": "Trip created", "trip_id": trip_ref.key}
+        data = {
+            **trip.model_dump(),
+            "driver_uid": uid,
+            "created_at": _now(),
+            "updated_at": _now(),
+        }
+        response = get_supabase().table("trips").insert(data).execute()
+        created = response.data[0] if response.data else data
+        return {
+            "message": "Trip created",
+            "trip_id": created.get("id"),
+            "trip": _format_trip(created),
+        }
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
 
 @router.get("/{uid}")
 def get_trips(uid: str):
-    """Get all trips for a driver"""
+    """Get all trips for a driver."""
     try:
-        trips_ref = db.reference("trips")
-        all_trips = trips_ref.get()
-        if not all_trips:
-            return []
-        
-        driver_trips = [trip for trip in all_trips.values() if trip.get("driver_id") == uid]
-        return driver_trips
+        response = (
+            get_supabase()
+            .table("trips")
+            .select("*")
+            .eq("driver_uid", uid)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return [_format_trip(trip) for trip in (response.data or [])]
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
 
 @router.get("/trip/{trip_id}")
 def get_trip(trip_id: str):
-    """Get trip details"""
+    """Get trip details."""
     try:
-        trip_ref = db.reference(f"trips/{trip_id}")
-        trip = trip_ref.get()
+        trip = (
+            get_supabase()
+            .table("trips")
+            .select("*")
+            .eq("id", trip_id)
+            .maybe_single()
+            .execute()
+            .data
+        )
         if not trip:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
-        return trip
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Trip not found",
+            )
+        return _format_trip(trip)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
+
 @router.patch("/trip/{trip_id}/status")
 def update_trip_status(trip_id: str, status: str):
-    """Update trip status"""
+    """Update trip status."""
     try:
-        trip_ref = db.reference(f"trips/{trip_id}")
-        trip_ref.update({"status": status})
-        return {"message": "Trip status updated"}
+        response = (
+            get_supabase()
+            .table("trips")
+            .update({"status": status, "updated_at": _now()})
+            .eq("id", trip_id)
+            .execute()
+        )
+        if not response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Trip not found",
+            )
+        return {"message": "Trip status updated", "trip": _format_trip(response.data[0])}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+

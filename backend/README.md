@@ -1,6 +1,15 @@
 # LoadR Backend API
 
-FastAPI backend for LoadR app with Firebase integration for authentication and database.
+FastAPI backend for LoadR.
+
+Current demo direction:
+
+- Firebase Auth for authentication only
+- Supabase Postgres for app data
+- Supabase Realtime for driver location, active status, and trip updates
+- Supabase Storage for driver documents
+
+Firebase Realtime Database is no longer used by mounted API routes.
 
 ## Setup
 
@@ -16,13 +25,20 @@ source venv/bin/activate      # Mac/Linux
 pip install -r requirements.txt
 ```
 
-### 3. Firebase Setup
+### 3. Firebase Auth Setup
 - Create a Firebase project at https://firebase.google.com/
 - Download Firebase credentials JSON from Project Settings
 - Place it in backend folder as `firebase-credentials.json`
-- Copy `.env.example` to `.env` and update with your Firebase URLs
+- Copy `.env.example` to `.env`
+- Keep `ALLOW_CUSTOM_TOKEN_AUTH=true` for the current fake OTP demo flow
 
-### 4. Run the Server
+### 4. Supabase Setup
+- Create a Supabase project
+- Add `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_STORAGE_BUCKET` to `.env`
+- Verify the private Storage bucket named `driver-documents`
+- Apply the project's Supabase schema and policies from your local setup notes. These SQL setup files are intentionally ignored because they are demo/environment setup artifacts.
+
+### 5. Run the Server
 ```bash
 python main.py
 ```

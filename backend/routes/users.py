@@ -1,13 +1,13 @@
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
-import time
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from firebase_admin import db
 from pydantic import BaseModel
 
 from dependencies import CurrentUser, get_current_user, require_current_user_uid
 from onboarding import sync_onboarding_state, update_onboarding_progress
+from supabase_config import get_supabase
 
 router = APIRouter()
 
@@ -26,19 +26,33 @@ class UserProfileUpdate(BaseModel):
     email: Optional[str] = None
 
 
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _get_profile(uid: str) -> dict:
+    profile = (
+        get_supabase()
+        .table("profiles")
+        .select("*")
+        .eq("firebase_uid", uid)
+        .maybe_single()
+        .execute()
+        .data
+    )
+    if not profile:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return profile
+
+
 @router.get("/{uid}")
 def get_user(uid: str, current_user: CurrentUser = Depends(get_current_user)):
     """Get user profile and onboarding state."""
     require_current_user_uid(uid, current_user)
     try:
-        user = db.reference(f"users/{uid}").get()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found",
-            )
-        sync_onboarding_state(uid, user)
-        return user
+        profile = _get_profile(uid)
+        onboarding = sync_onboarding_state(uid, profile)
+        return {**profile, "onboarding": onboarding}
     except HTTPException:
         raise
     except Exception as e:
@@ -54,21 +68,11 @@ def select_role(
     """Select whether the signed-in account is a user or driver."""
     require_current_user_uid(uid, current_user)
     try:
-        user_ref = db.reference(f"users/{uid}")
-        existing_user = user_ref.get()
-        if not existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found",
-            )
-
-        role = request.role
-        role_selected_at = int(time.time())
-
+        _get_profile(uid)
         updates = {
-            "role": role.value,
+            "role": request.role.value,
             "role_selected": True,
-            "role_selected_at": role_selected_at,
+            "role_selected_at": _now(),
         }
         onboarding = update_onboarding_progress(uid, updates)
 
@@ -93,13 +97,7 @@ def update_user_profile(
     """Update common profile fields shared by users and drivers."""
     require_current_user_uid(uid, current_user)
     try:
-        user_ref = db.reference(f"users/{uid}")
-        if not user_ref.get():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found",
-            )
-
+        _get_profile(uid)
         updates = profile.model_dump(exclude_unset=True)
         if not updates:
             raise HTTPException(
@@ -107,9 +105,15 @@ def update_user_profile(
                 detail="No profile fields provided",
             )
 
-        updates["updated_at"] = int(time.time())
-        user_ref.update(updates)
-        return {"message": "User profile updated", "uid": uid, **updates}
+        updates["updated_at"] = _now()
+        response = (
+            get_supabase()
+            .table("profiles")
+            .update(updates)
+            .eq("firebase_uid", uid)
+            .execute()
+        )
+        return {"message": "User profile updated", "uid": uid, **response.data[0]}
     except HTTPException:
         raise
     except Exception as e:
@@ -121,14 +125,10 @@ def get_onboarding(uid: str, current_user: CurrentUser = Depends(get_current_use
     """Get the user's normalized onboarding progress."""
     require_current_user_uid(uid, current_user)
     try:
-        user = db.reference(f"users/{uid}").get()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found",
-            )
-        return sync_onboarding_state(uid, user)
+        profile = _get_profile(uid)
+        return sync_onboarding_state(uid, profile)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
