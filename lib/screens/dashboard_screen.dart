@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:loadr/services/api_service.dart';
 import 'package:loadr/widgets/bottom_nav.dart';
 import 'package:loadr/widgets/online_toggle.dart';
@@ -18,6 +19,7 @@ class DashboardScreenState extends State<DashboardScreen> {
   String? _uid;
   Map<String, dynamic>? _profile;
   Map<String, dynamic>? _ledger;
+  String? _locationLabel;
   List<dynamic> _jobs = [];
   List<dynamic> _trips = [];
 
@@ -44,12 +46,20 @@ class DashboardScreenState extends State<DashboardScreen> {
       ]);
 
       if (!mounted) return;
+      final profile = results[0] as Map<String, dynamic>;
+      final currentLocation = _locationFromProfile(profile);
+      final locationLabel = await _labelForLocation(currentLocation);
+      if (!mounted) return;
       setState(() {
         _uid = uid;
-        _profile = results[0] as Map<String, dynamic>;
+        _profile = profile;
         _trips = results[1] as List<dynamic>;
         _jobs = results[2] as List<dynamic>;
         _ledger = results[3] as Map<String, dynamic>;
+        _locationLabel = locationLabel;
+        if (currentLocation?['is_active'] is bool) {
+          _isOnline = currentLocation!['is_active'] as bool;
+        }
         _isLoading = false;
       });
     } catch (e) {
@@ -62,17 +72,42 @@ class DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _setOnline(bool value) async {
-    setState(() => _isOnline = value);
     final uid = _uid;
     if (uid == null) return;
+
+    final location = _currentLocation;
+    final latitude = _numValue(location?['latitude']);
+    final longitude = _numValue(location?['longitude']);
+    if (latitude == null || longitude == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Save your current location first')),
+      );
+      return;
+    }
+
+    final previousValue = _isOnline;
+    setState(() => _isOnline = value);
     try {
       await ApiService.updateLocation(uid, {
-        'latitude': 8.5241,
-        'longitude': 76.9366,
+        'latitude': latitude,
+        'longitude': longitude,
         'is_active': value,
+      });
+      if (!mounted) return;
+      setState(() {
+        _profile = {
+          ...?_profile,
+          'current_location': {
+            ...?location,
+            'latitude': latitude,
+            'longitude': longitude,
+            'is_active': value,
+          },
+        };
       });
     } catch (e) {
       if (!mounted) return;
+      setState(() => _isOnline = previousValue);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Status update failed: $e')),
       );
@@ -86,6 +121,7 @@ class DashboardScreenState extends State<DashboardScreen> {
     final summary = (_ledger?['summary'] as Map<String, dynamic>?) ?? {};
     final name = (_profile?['name'] as String?)?.trim();
     final vehicle = (_profile?['vehicle_number'] as String?)?.trim();
+    final locationText = _locationText;
 
     return Scaffold(
       backgroundColor: const Color(0xFFFFF5F5),
@@ -129,17 +165,23 @@ class DashboardScreenState extends State<DashboardScreen> {
                             ),
                             Row(
                               mainAxisSize: MainAxisSize.min,
-                              children: const [
-                                Text(
-                                  'Thiruvananthapuram',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
+                              children: [
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 180,
+                                  ),
+                                  child: Text(
+                                    locationText,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
-                                SizedBox(width: 6),
-                                Icon(
+                                const SizedBox(width: 6),
+                                const Icon(
                                   Icons.location_on,
                                   color: Colors.white,
                                   size: 22,
@@ -223,6 +265,74 @@ class DashboardScreenState extends State<DashboardScreen> {
   String _shortId(String? value) {
     if (value == null || value.isEmpty) return 'N/A';
     return value.length <= 8 ? value : value.substring(0, 8).toUpperCase();
+  }
+
+  Map<String, dynamic>? get _currentLocation => _locationFromProfile(_profile);
+
+  Map<String, dynamic>? _locationFromProfile(Map<String, dynamic>? profile) {
+    final location = profile?['current_location'];
+    if (location is Map<String, dynamic>) return location;
+    if (location is Map) return Map<String, dynamic>.from(location);
+    return null;
+  }
+
+  num? _numValue(dynamic value) {
+    if (value is num) return value;
+    return num.tryParse('${value ?? ''}');
+  }
+
+  Future<String?> _labelForLocation(Map<String, dynamic>? location) async {
+    final latitude = _numValue(location?['latitude']);
+    final longitude = _numValue(location?['longitude']);
+    if (latitude == null || longitude == null) return null;
+
+    try {
+      final places = await placemarkFromCoordinates(
+        latitude.toDouble(),
+        longitude.toDouble(),
+      );
+      if (places.isEmpty) return null;
+
+      final place = places.first;
+      final city = _firstText([
+        place.locality,
+        place.subAdministrativeArea,
+        place.administrativeArea,
+      ]);
+      final state = _cleanText(place.administrativeArea);
+
+      if (city == null) return null;
+      if (state == null || city.toLowerCase() == state.toLowerCase()) {
+        return city;
+      }
+      return '$city, $state';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? _firstText(List<String?> values) {
+    for (final value in values) {
+      final text = _cleanText(value);
+      if (text != null) return text;
+    }
+    return null;
+  }
+
+  String? _cleanText(String? value) {
+    final text = value?.trim();
+    if (text == null || text.isEmpty) return null;
+    return text;
+  }
+
+  String get _locationText {
+    if (_locationLabel?.isNotEmpty == true) return _locationLabel!;
+
+    final location = _currentLocation;
+    final latitude = _numValue(location?['latitude']);
+    final longitude = _numValue(location?['longitude']);
+    if (latitude == null || longitude == null) return 'Location not set';
+    return '${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)}';
   }
 
   String _numText(dynamic value) {

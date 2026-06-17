@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants.dart';
 import '../services/api_service.dart';
@@ -13,11 +14,37 @@ class LocationScreen extends StatefulWidget {
 class _LocationScreenState extends State<LocationScreen> {
   bool _isLoading = false;
 
+  Future<Position> _determinePosition() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      throw Exception('Please turn on location services and try again');
+    }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.denied) {
+      throw Exception('Location permission is required to save your position');
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      throw Exception(
+          'Location permission is blocked. Enable it from app settings');
+    }
+
+    return Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+      ),
+    );
+  }
+
   Future<void> _handleUseLocation() async {
     setState(() => _isLoading = true);
 
     try {
-      // Get stored UID
       final prefs = await SharedPreferences.getInstance();
       final uid = prefs.getString('uid');
 
@@ -25,15 +52,16 @@ class _LocationScreenState extends State<LocationScreen> {
         throw Exception('User not authenticated');
       }
 
-      // Simulated location - In production, use geolocator package
+      final position = await _determinePosition();
       final location = {
-        'latitude': 28.6139,
-        'longitude': 77.2090,
-        'address': 'New Delhi, India',
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'is_active': true,
       };
 
-      // Send location to backend
       await ApiService.updateLocation(uid, location);
+      await prefs.setDouble('last_latitude', position.latitude);
+      await prefs.setDouble('last_longitude', position.longitude);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

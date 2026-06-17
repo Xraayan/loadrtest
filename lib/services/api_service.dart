@@ -222,7 +222,7 @@ class ApiService {
           .timeout(const Duration(seconds: 10));
 
       if (response.statusCode != 200) {
-        throw Exception('Failed to update location');
+        throw Exception('Failed to update location: ${response.body}');
       }
     } catch (e) {
       throw Exception('Error: $e');
