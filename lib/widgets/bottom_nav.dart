@@ -10,8 +10,8 @@ class BottomNav extends StatelessWidget {
   static const _routes = [
     '/dashboard',
     '/wallet-deposit',
-    // '/messages',
-    // '/profile',
+    null,
+    '/driver-details',
   ];
 
   @override
@@ -50,7 +50,9 @@ class BottomNav extends StatelessWidget {
                   onTap: () {
                     // Don't navigate if already on this tab
                     if (i == selectedIndex) return;
-                    Navigator.pushReplacementNamed(context, _routes[i]);
+                    final route = _routes[i];
+                    if (route == null) return;
+                    Navigator.pushReplacementNamed(context, route);
                   },
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,

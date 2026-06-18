@@ -1,8 +1,11 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
-from firebase_admin import auth, db
+from firebase_admin import auth
 import secrets
 import time
+
+from dev_auth import store_custom_token
+from supabase_config import get_supabase
 
 router = APIRouter()
 
@@ -19,6 +22,26 @@ class SignInResponse(BaseModel):
 
 # Store OTPs temporarily (in production, use Redis)
 otp_store = {}
+
+
+def _ensure_supabase_profile(uid: str, phone: str) -> None:
+    get_supabase().table("profiles").upsert(
+        {
+            "firebase_uid": uid,
+            "phone": phone,
+            "profile_complete": False,
+            "onboarding_next": "role-selection",
+        },
+        on_conflict="firebase_uid",
+    ).execute()
+
+
+def _ensure_supabase_auth_claim(uid: str) -> None:
+    """Prepare Firebase users for future Supabase Third-Party Auth."""
+    user = auth.get_user(uid)
+    claims = user.custom_claims or {}
+    if claims.get("role") != "authenticated":
+        auth.set_custom_user_claims(uid, {**claims, "role": "authenticated"})
 
 @router.post("/signin")
 def sign_in(request: SignInRequest):
@@ -80,15 +103,14 @@ def verify_otp(request: OTPVerifyRequest):
             # Create new user
             user = auth.create_user(phone_number=f"+91{phone}")
             uid = user.uid
-            # Store user data in Firebase RTDB
-            db.reference(f"users/{uid}").set({
-                "phone": phone,
-                "created_at": int(time.time()),
-                "profile_complete": False
-            })
+
+        _ensure_supabase_auth_claim(uid)
+        _ensure_supabase_profile(uid, phone)
         
         # Generate custom token for Flutter app
         custom_token = auth.create_custom_token(uid)
+        token = custom_token.decode("utf-8")
+        store_custom_token(token, uid)
         
         # Clean up OTP
         del otp_store[phone]
@@ -96,7 +118,7 @@ def verify_otp(request: OTPVerifyRequest):
         return {
             "message": "OTP verified",
             "uid": uid,
-            "token": custom_token.decode('utf-8')
+            "token": token
         }
     except HTTPException:
         raise
@@ -108,6 +130,8 @@ def refresh_token(uid: str):
     """Generate new custom token"""
     try:
         custom_token = auth.create_custom_token(uid)
-        return {"token": custom_token.decode('utf-8')}
+        token = custom_token.decode("utf-8")
+        store_custom_token(token, uid)
+        return {"token": token}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

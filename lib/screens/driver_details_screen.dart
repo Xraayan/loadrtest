@@ -265,7 +265,8 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> {
       width: double.infinity,
       height: 52,
       child: ElevatedButton(
-        onPressed: _isLoading ? null : _saveDriverDetails,
+        // onPressed: _isLoading ? null : _saveDriverDetails,
+        onPressed: () => Navigator.pushNamed(context, '/vehicles'),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFE64A19),
           disabledBackgroundColor: const Color(0xFFE64A19).withOpacity(0.6),

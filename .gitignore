@@ -43,3 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/app/.cxx/
+
+# Local project notes and setup-only backend SQL
+/backend/context.md
+/backend/SUPABASE_SETUP.md
+/backend/*.sql

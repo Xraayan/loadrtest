@@ -20,7 +20,8 @@ class _ActivationSuccessScreenState extends State<ActivationSuccessScreen> {
         child: Column(
           children: [
             const OnboardingStepper(currentStep: 3),
-            const Text("Step 3 of 3", style: TextStyle(color: Colors.grey)),
+            const Text("Onboarding complete",
+                style: TextStyle(color: Colors.grey)),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 20),
               child: Text("Your are Ready to Drive",
@@ -72,27 +73,24 @@ class _ActivationSuccessScreenState extends State<ActivationSuccessScreen> {
             Padding(
               padding: const EdgeInsets.all(20),
               child: ElevatedButton(
-                onPressed: isAccepted ? () {} : null, // Disable if not accepted
+                onPressed: isAccepted
+                    ? () => Navigator.pushNamedAndRemoveUntil(
+                          context,
+                          '/dashboard',
+                          (route) => false,
+                        )
+                    : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: isAccepted
                       ? kPrimaryOrange
-                      : kPrimaryOrange.withOpacity(0.5),
+                      : kPrimaryOrange.withValues(alpha: 0.5),
                   minimumSize: const Size(double.infinity, 55),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(15)),
                 ),
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pushNamed(context, '/dashboard'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: kPrimaryOrange,
-                    minimumSize: const Size(double.infinity, 55),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: const Text("Continue",
-                      style: TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.bold)),
-                ),
+                child: const Text("Continue",
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold)),
               ),
             ),
           ],

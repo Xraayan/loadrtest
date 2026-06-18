@@ -44,6 +44,11 @@ firebase-credentials.json
 # Logs
 *.log
 
+# Local Codex/demo setup notes
+context.md
+SUPABASE_SETUP.md
+*.sql
+
 # OS
 .DS_Store
 Thumbs.db
