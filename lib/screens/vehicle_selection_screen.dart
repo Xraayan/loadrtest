@@ -38,10 +38,13 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
             {"name": "Tata 407", "color": "0xFF9FA8DA"},
           ];
         } else {
-          vehicles = vehicleList.map((v) => {
-            "name": v['type'] ?? v['name'] ?? 'Unknown',
-            "color": "0xFFFF7043",
-          }).toList().cast<Map<String, dynamic>>();
+          vehicles = vehicleList
+              .map((v) => {
+                    "name": v['type'] ?? v['name'] ?? 'Unknown',
+                    "color": "0xFFFF7043",
+                  })
+              .toList()
+              .cast<Map<String, dynamic>>();
         }
         _isLoading = false;
       });
@@ -114,19 +117,25 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
             children: [
               const OnboardingStepper(currentStep: 1),
               const Text("Step 1 of 3", style: TextStyle(color: Colors.grey)),
-              const Text("Select Vehicle", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+              const Text("Select Vehicle",
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
               const SizedBox(height: 10),
-              const Text("Pick your truck type for tailored driving opportunities."),
+              const Text(
+                  "Pick your truck type for tailored driving opportunities."),
               const SizedBox(height: 20),
               Expanded(
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : GridView.builder(
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2, crossAxisSpacing: 15, mainAxisSpacing: 15, childAspectRatio: 1.4
-                        ),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 15,
+                                mainAxisSpacing: 15,
+                                childAspectRatio: 1.4),
                         itemCount: vehicles.length,
-                        itemBuilder: (context, index) => _buildVehicleCard(vehicles[index]),
+                        itemBuilder: (context, index) =>
+                            _buildVehicleCard(vehicles[index]),
                       ),
               ),
               ElevatedButton(
@@ -134,7 +143,8 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: kPrimaryOrange,
                   minimumSize: const Size(double.infinity, 55),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15)),
                 ),
                 child: _isSaving
                     ? const SizedBox(
@@ -142,7 +152,8 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                         width: 20,
                         child: CircularProgressIndicator(color: Colors.white),
                       )
-                    : const Text("Continue", style: TextStyle(color: Colors.white)),
+                    : const Text("Continue",
+                        style: TextStyle(color: Colors.white)),
               ),
             ],
           ),
@@ -164,12 +175,15 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
         child: Stack(
           alignment: Alignment.bottomCenter,
           children: [
-            const Center(child: Icon(Icons.car_repair, size: 50, color: Colors.white24)),
+            const Center(
+                child: Icon(Icons.car_repair, size: 50, color: Colors.white24)),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(4),
               color: Colors.black26,
-              child: Text(vehicle['name']!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 12)),
+              child: Text(vehicle['name']!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontSize: 12)),
             )
           ],
         ),
