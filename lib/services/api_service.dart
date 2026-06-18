@@ -3,16 +3,20 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://localhost:8000/api';
-  
+  // static const String baseUrl = 'http://localhost:8000/api';
+  static const String baseUrl =
+      'https://harmonize-curliness-apple.ngrok-free.dev/api';
+
   // Sign in with phone number
   static Future<Map<String, dynamic>> signIn(String phone) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/signin'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'phone': phone}),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/signin'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'phone': phone}),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -25,13 +29,16 @@ class ApiService {
   }
 
   // Verify OTP and get token
-  static Future<Map<String, dynamic>> verifyOtp(String phone, String otp) async {
+  static Future<Map<String, dynamic>> verifyOtp(
+      String phone, String otp) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/verify-otp'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'phone': phone, 'otp': otp}),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/verify-otp'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'phone': phone, 'otp': otp}),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -77,23 +84,48 @@ class ApiService {
   }
 
   // Update driver profile
-  static Future<void> updateDriverProfile(String uid, Map<String, dynamic> data) async {
-    try {
-      final token = await getAuthToken();
-      final response = await http.put(
-        Uri.parse('$baseUrl/drivers/$uid'),
-        headers: {
-          'Content-Type': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode(data),
-      ).timeout(const Duration(seconds: 10));
+  // static Future<void> updateDriverProfile(
+  //     String uid, Map<String, dynamic> data) async {
+  //   try {
+  //     final token = await getAuthToken();
+  //     final response = await http
+  //         .put(
+  //           Uri.parse('$baseUrl/drivers/$uid'),
+  //           headers: {
+  //             'Content-Type': 'application/json',
+  //             if (token != null) 'Authorization': 'Bearer $token',
+  //           },
+  //           body: jsonEncode(data),
+  //         )
+  //         .timeout(const Duration(seconds: 10));
+  //     if (response.statusCode != 200) {
+  //       throw Exception('Failed to update profile');
+  //     }
+  //   } catch (e) {
+  //     throw Exception('Error: $e');
+  //   }
+  // }
 
-      if (response.statusCode != 200) {
-        throw Exception('Failed to update profile');
-      }
-    } catch (e) {
-      throw Exception('Error: $e');
+  static Future<void> updateDriverProfile(
+    String uid,
+    Map<String, dynamic> data,
+  ) async {
+    final token = await getAuthToken();
+
+    final response = await http.put(
+      Uri.parse('$baseUrl/drivers/$uid'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(data),
+    );
+
+    print('Status: ${response.statusCode}');
+    print('Body: ${response.body}');
+
+    if (response.statusCode != 200) {
+      throw Exception(response.body);
     }
   }
 
@@ -124,5 +156,10 @@ class ApiService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
     await prefs.remove('uid');
+  }
+
+  static Future<String?> getUid() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('uid');
   }
 }
