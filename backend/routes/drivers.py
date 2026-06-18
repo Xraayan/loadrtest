@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from supabase_config import get_supabase
 
@@ -10,10 +10,10 @@ router = APIRouter()
 
 
 class DriverProfile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: Optional[str] = None
-    email: Optional[str] = None
     vehicle_number: Optional[str] = None
-    license_number: Optional[str] = None
     current_location: Optional[dict] = None
 
 
@@ -68,6 +68,12 @@ def update_driver(uid: str, driver: DriverProfile):
         data = driver.model_dump(exclude_unset=True)
         current_location = data.pop("current_location", None)
 
+        if not data and not current_location:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Send at least one valid field: name, vehicle_number, current_location",
+            )
+
         if data:
             data["firebase_uid"] = uid
             data["updated_at"] = _now()
@@ -88,7 +94,22 @@ def update_driver(uid: str, driver: DriverProfile):
                 on_conflict="driver_uid",
             ).execute()
 
-        return {"message": "Driver profile updated"}
+        updated_profile = (
+            get_supabase()
+            .table("profiles")
+            .select("firebase_uid,name,vehicle_number,updated_at")
+            .eq("firebase_uid", uid)
+            .maybe_single()
+            .execute()
+            .data
+        )
+
+        return {
+            "message": "Driver profile updated",
+            "profile": updated_profile,
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -110,4 +131,3 @@ def update_location(uid: str, location: dict):
         return {"message": "Location updated"}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
