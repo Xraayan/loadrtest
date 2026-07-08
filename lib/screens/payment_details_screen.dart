@@ -46,7 +46,13 @@ class _PaymentDetailsScreenState extends State<PaymentDetailsScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.black87, size: 24),
-          onPressed: () => Navigator.maybePop(context),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.maybePop(context);
+            } else {
+              Navigator.pushReplacementNamed(context, '/customer-home');
+            }
+          },
         ),
       ),
       body: Column(

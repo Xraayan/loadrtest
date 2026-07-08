@@ -49,8 +49,13 @@ class _AllTripScreenState extends State<AllTripScreen> {
       backgroundColor: const Color(0xFFF7F7F7),
       appBar: AppBar(
         leading: IconButton(
-          onPressed: () =>
-              Navigator.pushReplacementNamed(context, '/dashboard'),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.maybePop(context);
+            } else {
+              Navigator.pushReplacementNamed(context, '/dashboard');
+            }
+          },
           icon: const Icon(Icons.arrow_back),
         ),
         backgroundColor: Colors.white,

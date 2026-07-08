@@ -35,7 +35,7 @@ class _OTPScreenState extends State<OTPScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Authentication successful')),
         );
-        Navigator.pushNamed(context, '/location');
+        Navigator.pushNamed(context, '/role-selection');
       }
     } catch (e) {
       if (mounted) {

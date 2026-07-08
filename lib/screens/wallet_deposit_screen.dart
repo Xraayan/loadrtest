@@ -1,27 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:loadr/screens/dashboard_screen.dart';
+import 'package:loadr/constants.dart';
 import 'package:loadr/widgets/bottom_nav.dart';
-
-void main() {
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Wallet',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        fontFamily: 'Roboto',
-        scaffoldBackgroundColor: const Color(0xFFF2F2F7),
-      ),
-      home: const WalletDepositScreen(),
-    );
-  }
-}
 
 class WalletDepositScreen extends StatefulWidget {
   const WalletDepositScreen({super.key});
@@ -31,21 +10,9 @@ class WalletDepositScreen extends StatefulWidget {
 }
 
 class _WalletDepositScreenState extends State<WalletDepositScreen> {
-  double _sliderValue = 100;
-  int _selectedAmount = 100;
-  final TextEditingController _upiController = TextEditingController();
-
+  final _upiController = TextEditingController();
   final List<int> _quickAmounts = [100, 200, 300, 500];
-
-  static const Color _primaryOrange = Color(0xFFE8431A);
-  static const Color _darkBlue = Color(0xFF1A237E);
-
-  void _onQuickAmountSelected(int amount) {
-    setState(() {
-      _selectedAmount = amount;
-      _sliderValue = amount.toDouble();
-    });
-  }
+  int _selectedAmount = 200;
 
   @override
   void dispose() {
@@ -56,240 +23,274 @@ class _WalletDepositScreenState extends State<WalletDepositScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F2F7),
+      backgroundColor: const Color(0xFFF7F7F7),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFFF7F7F7),
+        elevation: 0,
         leading: IconButton(
-            onPressed: () => Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const DashboardScreen(),
-                ),
-                (route) => false),
-            icon: const Icon(Icons.arrow_back)),
+          tooltip: 'Back',
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.maybePop(context);
+            } else {
+              Navigator.pushReplacementNamed(context, '/dashboard');
+            }
+          },
+          icon: const Icon(Icons.arrow_back, color: Colors.black87),
+        ),
         title: const Text(
           'Wallet',
           style: TextStyle(
             color: Colors.black87,
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.history, color: _primaryOrange, size: 26),
-            onPressed: () {},
-          ),
-          IconButton(
-            icon: const Icon(Icons.crop_free, color: _primaryOrange, size: 26),
-            onPressed: () {},
-          ),
-          const SizedBox(width: 4),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  const SizedBox(height: 32),
-
-                  // ── Amount Section ──
-                  _buildAmountSection(),
-
-                  const SizedBox(height: 28),
-
-                  // ── Slider ──
-                  _buildSlider(),
-
-                  const SizedBox(height: 20),
-
-                  // ── Quick Amount Buttons ──
-                  _buildQuickAmounts(),
-
-                  const SizedBox(height: 36),
-
-                  // ── UPI Section ──
-                  _buildUpiSection(),
-
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
-          ),
-
-          // ── Deposit Button ──
-          _buildDepositButton(),
-        ],
-      ),
-      bottomNavigationBar: BottomNav(
-        selectedIndex: 1,
-      ),
-    );
-  }
-
-  // ─── Amount Display ───────────────────────────────────────────────────────
-  Widget _buildAmountSection() {
-    return Column(
-      children: [
-        const Text(
-          'Amount',
-          style: TextStyle(
-            fontSize: 16,
-            color: Colors.black54,
-            fontWeight: FontWeight.w400,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Rs ${_selectedAmount.toInt()}',
-          style: const TextStyle(
-            fontSize: 40,
             fontWeight: FontWeight.w900,
-            color: Colors.black87,
-            letterSpacing: -0.5,
           ),
         ),
-        const SizedBox(height: 6),
-        const Text(
-          'Your Current Balance:',
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey,
-            fontWeight: FontWeight.w400,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ─── Slider ───────────────────────────────────────────────────────────────
-  Widget _buildSlider() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: SliderTheme(
-        data: SliderTheme.of(context).copyWith(
-          activeTrackColor: _primaryOrange,
-          inactiveTrackColor: Colors.grey.shade300,
-          thumbColor: _primaryOrange,
-          overlayColor: _primaryOrange.withOpacity(0.15),
-          trackHeight: 4.0,
-          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
-          overlayShape: const RoundSliderOverlayShape(overlayRadius: 22),
-        ),
-        child: Slider(
-          value: _sliderValue.clamp(100, 500),
-          min: 100,
-          max: 500,
-          divisions: 400,
-          onChanged: (value) {
-            setState(() {
-              _sliderValue = value;
-              _selectedAmount = value.toInt();
-            });
-          },
-        ),
+        centerTitle: true,
       ),
-    );
-  }
-
-  // ─── Quick Amount Buttons ─────────────────────────────────────────────────
-  Widget _buildQuickAmounts() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: _quickAmounts.map((amount) {
-          final bool isSelected = _selectedAmount == amount;
-          return GestureDetector(
-            onTap: () => _onQuickAmountSelected(amount),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 78,
-              height: 56,
-              decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFFFAEDE8) : Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: isSelected
-                      ? _primaryOrange.withOpacity(0.4)
-                      : Colors.grey.shade200,
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          children: [
+            _BalanceCard(amount: _selectedAmount),
+            const SizedBox(height: 18),
+            const Text(
+              'Add money',
+              style: TextStyle(
+                color: Colors.black87,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
               ),
-              child: Center(
+            ),
+            const SizedBox(height: 12),
+            _AmountSelector(
+              amounts: _quickAmounts,
+              selectedAmount: _selectedAmount,
+              onChanged: (amount) => setState(() => _selectedAmount = amount),
+            ),
+            const SizedBox(height: 18),
+            _UpiCard(controller: _upiController),
+            const SizedBox(height: 18),
+            _WalletInfoCard(
+              title: 'Recent activity',
+              subtitle: 'Accepted trip payouts will appear here.',
+              icon: Icons.receipt_long_outlined,
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: () {},
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kPrimaryOrange,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
                 child: Text(
-                  '$amount',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: isSelected ? _primaryOrange : Colors.black87,
+                  'Add Rs $_selectedAmount',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
             ),
-          );
-        }).toList(),
+          ],
+        ),
       ),
+      bottomNavigationBar: const BottomNav(selectedIndex: 1),
     );
   }
+}
 
-  // ─── UPI Section ──────────────────────────────────────────────────────────
-  Widget _buildUpiSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+class _BalanceCard extends StatelessWidget {
+  final int amount;
+
+  const _BalanceCard({required this.amount});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFEDEDED)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0F000000),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF0EA),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.account_balance_wallet_outlined,
+                  color: kPrimaryOrange,
+                ),
+              ),
+              const Spacer(),
+              const _StatusPill(text: 'Driver wallet'),
+            ],
+          ),
+          const SizedBox(height: 18),
           const Text(
-            'Enter UPI',
+            'Available balance',
             style: TextStyle(
-              fontSize: 18,
+              color: Colors.black54,
+              fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: _darkBlue,
             ),
           ),
-          const SizedBox(height: 16),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.black87, width: 1.5),
+          const SizedBox(height: 4),
+          const Text(
+            'Rs 0',
+            style: TextStyle(
+              color: Colors.black87,
+              fontSize: 36,
+              fontWeight: FontWeight.w900,
             ),
-            child: Row(
-              children: [
-                // PhonePe-style logo
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Ready to add Rs $amount',
+            style: const TextStyle(
+              color: kPrimaryOrange,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-                Expanded(
-                  child: TextField(
-                    controller: _upiController,
-                    decoration: const InputDecoration(
-                      hintText: 'Enter your UPI',
-                      hintStyle: TextStyle(
-                        color: Colors.grey,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w400,
-                      ),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    style: const TextStyle(
-                      fontSize: 15,
-                      color: Colors.black87,
-                    ),
-                    keyboardType: TextInputType.emailAddress,
+class _AmountSelector extends StatelessWidget {
+  final List<int> amounts;
+  final int selectedAmount;
+  final ValueChanged<int> onChanged;
+
+  const _AmountSelector({
+    required this.amounts,
+    required this.selectedAmount,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        for (final amount in amounts)
+          ChoiceChip(
+            selected: selectedAmount == amount,
+            label: Text('Rs $amount'),
+            onSelected: (_) => onChanged(amount),
+            selectedColor: kPrimaryOrange,
+            backgroundColor: Colors.white,
+            labelStyle: TextStyle(
+              color: selectedAmount == amount ? Colors.white : Colors.black87,
+              fontWeight: FontWeight.w800,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(999),
+              side: BorderSide(
+                color: selectedAmount == amount
+                    ? kPrimaryOrange
+                    : const Color(0xFFE3E3E3),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _UpiCard extends StatelessWidget {
+  final TextEditingController controller;
+
+  const _UpiCard({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFEDEDED)),
+      ),
+      child: TextField(
+        controller: controller,
+        keyboardType: TextInputType.emailAddress,
+        decoration: const InputDecoration(
+          labelText: 'UPI ID',
+          hintText: 'name@upi',
+          prefixIcon: Icon(Icons.qr_code_2_outlined),
+          border: InputBorder.none,
+        ),
+      ),
+    );
+  }
+}
+
+class _WalletInfoCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+
+  const _WalletInfoCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFEDEDED)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: kPrimaryOrange),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: const TextStyle(color: Colors.black54, fontSize: 12),
+                ),
               ],
             ),
           ),
@@ -297,35 +298,27 @@ class _WalletDepositScreenState extends State<WalletDepositScreen> {
       ),
     );
   }
+}
 
-  // ─── Deposit Button ───────────────────────────────────────────────────────
-  Widget _buildDepositButton() {
+class _StatusPill extends StatelessWidget {
+  final String text;
+
+  const _StatusPill({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-      child: SizedBox(
-        height: 56,
-        child: ElevatedButton(
-          onPressed: () {
-            // Handle deposit action
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: _primaryOrange,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ),
-          child: const Text(
-            'DEPOSIT',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.5,
-            ),
-          ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF0EA),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: kPrimaryOrange,
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
         ),
       ),
     );

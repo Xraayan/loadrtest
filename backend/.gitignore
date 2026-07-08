@@ -48,6 +48,8 @@ firebase-credentials.json
 context.md
 SUPABASE_SETUP.md
 *.sql
+!schema/
+!schema/*.sql
 
 # OS
 .DS_Store

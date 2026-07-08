@@ -73,7 +73,13 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          onPressed: () => Navigator.maybePop(context),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.maybePop(context);
+            } else {
+              Navigator.pushReplacementNamed(context, '/dashboard');
+            }
+          },
           icon: const Icon(Icons.arrow_back, color: Colors.black),
         ),
         title: Text(
@@ -265,8 +271,7 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> {
       width: double.infinity,
       height: 52,
       child: ElevatedButton(
-        // onPressed: _isLoading ? null : _saveDriverDetails,
-        onPressed: () => Navigator.pushNamed(context, '/vehicles'),
+        onPressed: _isLoading ? null : _saveDriverDetails,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFE64A19),
           disabledBackgroundColor: const Color(0xFFE64A19).withOpacity(0.6),

@@ -49,3 +49,4 @@ app.*.map.json
 /backend/context.md
 /backend/SUPABASE_SETUP.md
 /backend/*.sql
+/backend/.env

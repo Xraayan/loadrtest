@@ -46,7 +46,7 @@ class _NewTripScreenState extends State<NewTripScreen> {
       if (!mounted) return;
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Jobs error: $e')),
+        SnackBar(content: Text('Loads error: $e')),
       );
     }
   }
@@ -61,7 +61,20 @@ class _NewTripScreenState extends State<NewTripScreen> {
         throw Exception('User not authenticated');
       }
 
-      await ApiService.acceptJob(uid, jobId);
+      final activeJob = await ApiService.getDriverActiveJob(uid);
+      if (activeJob != null) {
+        throw Exception('Finish your active load before accepting another one');
+      }
+
+      final response = await ApiService.acceptJob(uid, jobId);
+      final acceptedJob = response['job'] is Map
+          ? Map<String, dynamic>.from(response['job'] as Map)
+          : job;
+      await ApiService.cacheDriverActiveJob({
+        ...acceptedJob,
+        'status': 'accepted',
+        'trip_id': response['trip_id'],
+      });
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Trip accepted')),
@@ -85,8 +98,13 @@ class _NewTripScreenState extends State<NewTripScreen> {
       backgroundColor: const Color(0xFFF7F7F7),
       appBar: AppBar(
         leading: IconButton(
-          onPressed: () =>
-              Navigator.pushReplacementNamed(context, '/dashboard'),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.maybePop(context);
+            } else {
+              Navigator.pushReplacementNamed(context, '/dashboard');
+            }
+          },
           icon: const Icon(Icons.arrow_back),
         ),
         backgroundColor: Colors.white,
@@ -274,6 +292,7 @@ class _JobCard extends StatelessWidget {
               runSpacing: 8,
               children: [
                 _Chip(label: '${job['city'] ?? 'Any city'}'),
+                _Chip(label: '${job['district'] ?? 'Any district'}'),
                 _Chip(label: '${job['state'] ?? 'Any state'}'),
                 _Chip(label: '${job['vehicle_type'] ?? 'Any vehicle'}'),
               ],

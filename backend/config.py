@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     allow_custom_token_auth: bool = True
     seed_firebase_data: bool = False
+    geoapify_api_key: Optional[str] = None
     
     class Config:
         env_file = ".env"

@@ -11,7 +11,7 @@ class BottomNav extends StatelessWidget {
     '/dashboard',
     '/wallet-deposit',
     null,
-    '/driver-details',
+    '/profile',
   ];
 
   @override

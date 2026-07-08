@@ -10,7 +10,9 @@ from routes import (
     ledger,
     location,
     notifications,
+    places,
     preferences,
+    quotes,
     trips,
     users,
     vehicles,
@@ -41,6 +43,8 @@ app.include_router(location.router, prefix="/api/location", tags=["Location"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
 app.include_router(preferences.router, prefix="/api/preferences", tags=["Preferences"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
+app.include_router(quotes.router, prefix="/api/quotes", tags=["Quotes"])
+app.include_router(places.router, prefix="/api/places", tags=["Places"])
 app.include_router(ledger.router, prefix="/api/ledger", tags=["Ledger"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["Notifications"])
 

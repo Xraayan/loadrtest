@@ -45,6 +45,11 @@ python main.py
 
 Server will start at `http://localhost:8000`
 
+### 6. Geoapify Setup
+Add `GEOAPIFY_API_KEY` to `backend/.env`.
+
+The mobile app calls the backend place-search API. Keep the Geoapify key on the backend; do not pass it through Flutter.
+
 ## API Documentation
 
 ### Authentication
@@ -76,6 +81,13 @@ Server will start at `http://localhost:8000`
 ### Location
 - `POST /api/location/update` - Update current location
 - `GET /api/location/{uid}` - Get current location
+
+### Places
+- `GET /api/places/autocomplete` - Search Indian place suggestions through backend Geoapify proxy
+- `GET /api/places/reverse` - Reverse geocode coordinates through backend Geoapify proxy
+
+### Quotes
+- `POST /api/quotes/estimate` - Calculate distance, route points, vehicle quotes, and location metadata
 
 ## Access API Docs
 Visit `http://localhost:8000/docs` for interactive Swagger documentation

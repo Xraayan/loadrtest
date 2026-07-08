@@ -1,12 +1,43 @@
 from datetime import datetime, timezone
 from typing import Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 
 from dependencies import CurrentUser, get_current_user, require_current_user_uid
+from role_profiles import get_role_profile
+from routes.quotes import LocationPoint, _haversine_km, _parse_location_metadata, _quote_for
 from supabase_config import get_supabase
 
 router = APIRouter()
+
+ACTIVE_TRIP_STATUSES = {
+    "pending",
+    "accepted",
+    "assigned",
+    "in_progress",
+    "started",
+    "on_the_way",
+    "pickup",
+    "loaded",
+}
+
+ACTIVE_JOB_STATUSES = {"assigned", "accepted", "in_progress"}
+
+
+class JobCreate(BaseModel):
+    customer_uid: str
+    title: str
+    pickup_location: str
+    dropoff_location: str
+    pickup_coords: dict
+    dropoff_coords: dict
+    vehicle_type: str
+    amount: float
+    state: Optional[str] = None
+    city: Optional[str] = None
+    district: Optional[str] = None
 
 
 def _now() -> str:
@@ -23,14 +54,111 @@ def _job_with_id(job: dict) -> dict:
     return {"job_id": job.get("id"), **job}
 
 
+def _job_with_driver(job: dict) -> dict:
+    formatted_job = _job_with_id(job)
+    driver_uid = job.get("assigned_driver_uid")
+    if not driver_uid:
+        return formatted_job
+
+    driver = {"uid": driver_uid}
+    try:
+        profile = (
+            get_supabase()
+            .table("profiles")
+            .select("firebase_uid,name")
+            .eq("firebase_uid", driver_uid)
+            .maybe_single()
+            .execute()
+            .data
+        )
+        if profile:
+            driver.update(profile)
+    except Exception:
+        pass
+
+    try:
+        driver_profile = get_role_profile("driver_profiles", "driver_uid", driver_uid)
+        if driver_profile:
+            driver.update(driver_profile)
+    except Exception:
+        pass
+
+    formatted_job["driver"] = driver
+    return formatted_job
+
+
 def _trip_with_id(trip: dict) -> dict:
     return {"trip_id": trip.get("id"), "driver_id": trip.get("driver_uid"), **trip}
+
+
+def _get_active_trip_for_driver(uid: str) -> Optional[dict]:
+    response = (
+        get_supabase()
+        .table("trips")
+        .select("*")
+        .eq("driver_uid", uid)
+        .in_("status", list(ACTIVE_TRIP_STATUSES))
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    trips = response.data or []
+    return trips[0] if trips else None
+
+
+def _get_active_job_for_driver(uid: str) -> Optional[dict]:
+    response = (
+        get_supabase()
+        .table("jobs")
+        .select("*")
+        .eq("assigned_driver_uid", uid)
+        .in_("status", list(ACTIVE_JOB_STATUSES))
+        .order("assigned_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    jobs = response.data or []
+    return jobs[0] if jobs else None
+
+
+def _active_assignment_for_driver(uid: str) -> Optional[dict]:
+    trip = _get_active_trip_for_driver(uid)
+    job = None
+    if trip and trip.get("job_id"):
+        job = (
+            get_supabase()
+            .table("jobs")
+            .select("*")
+            .eq("id", trip.get("job_id"))
+            .maybe_single()
+            .execute()
+            .data
+        )
+    if not job:
+        job = _get_active_job_for_driver(uid)
+    if not trip and job and job.get("assigned_trip_id"):
+        trip = (
+            get_supabase()
+            .table("trips")
+            .select("*")
+            .eq("id", job.get("assigned_trip_id"))
+            .maybe_single()
+            .execute()
+            .data
+        )
+    if not job and not trip:
+        return None
+    return {
+        "job": _job_with_id(job) if job else None,
+        "trip": _trip_with_id(trip) if trip else None,
+    }
 
 
 @router.get("/")
 def search_jobs(
     state: Optional[str] = None,
     city: Optional[str] = None,
+    district: Optional[str] = None,
     vehicle_type: Optional[str] = None,
     current_user: CurrentUser = Depends(get_current_user),
 ):
@@ -51,11 +179,79 @@ def search_jobs(
                 continue
             if not _matches_filter(job.get("city"), city):
                 continue
+            if not _matches_filter(job.get("district"), district):
+                continue
             if not _matches_filter(job.get("vehicle_type"), vehicle_type):
                 continue
             jobs.append(_job_with_id(job))
 
         return jobs
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/")
+def create_job(
+    request: JobCreate,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Create an open customer job for drivers to accept."""
+    require_current_user_uid(request.customer_uid, current_user)
+    try:
+        now = _now()
+        pickup_point = LocationPoint(
+            display_name=request.pickup_location,
+            latitude=float(request.pickup_coords.get("latitude")),
+            longitude=float(request.pickup_coords.get("longitude")),
+            city=request.city,
+            district=request.district,
+            state=request.state,
+        )
+        drop_point = LocationPoint(
+            display_name=request.dropoff_location,
+            latitude=float(request.dropoff_coords.get("latitude")),
+            longitude=float(request.dropoff_coords.get("longitude")),
+        )
+        distance_km = _haversine_km(pickup_point, drop_point)
+        quote = _quote_for(request.vehicle_type, distance_km)
+        metadata = _parse_location_metadata(pickup_point)
+        data = {
+            "id": str(uuid4()),
+            "title": request.title,
+            "pickup_location": request.pickup_location,
+            "dropoff_location": request.dropoff_location,
+            "pickup_coords": request.pickup_coords,
+            "dropoff_coords": request.dropoff_coords,
+            "state": metadata["state"],
+            "city": metadata["city"],
+            "district": metadata["district"],
+            "vehicle_type": request.vehicle_type,
+            "amount": quote["amount"],
+            "status": "open",
+            "created_at": now,
+            "updated_at": now,
+        }
+        response = get_supabase().table("jobs").insert(data).execute()
+        created = response.data[0] if response.data else data
+        return {
+            "message": "Job created",
+            "job_id": created.get("id"),
+            "job": _job_with_id(created),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/driver/{uid}/active")
+def get_active_driver_job(
+    uid: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Get the driver's currently active job/trip, if one exists."""
+    require_current_user_uid(uid, current_user)
+    try:
+        active = _active_assignment_for_driver(uid)
+        return active or {"job": None, "trip": None}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -75,7 +271,7 @@ def get_job(job_id: str, current_user: CurrentUser = Depends(get_current_user)):
         )
         if not job:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-        return _job_with_id(job)
+        return _job_with_driver(job)
     except HTTPException:
         raise
     except Exception as e:
@@ -91,6 +287,12 @@ def accept_job(
     """Accept an open job and create a trip for the driver."""
     require_current_user_uid(uid, current_user)
     try:
+        if _active_assignment_for_driver(uid):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Complete your active job before accepting another load",
+            )
+
         job = (
             get_supabase()
             .table("jobs")
@@ -106,7 +308,36 @@ def accept_job(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Job is not available")
 
         now = _now()
+        trip_id = str(uuid4())
+        accepted_job = {
+            **job,
+            "status": "assigned",
+            "assigned_driver_uid": uid,
+            "assigned_trip_id": trip_id,
+            "assigned_at": now,
+            "updated_at": now,
+        }
+        update_response = (
+            get_supabase()
+            .table("jobs")
+            .update(
+                {
+                    "status": accepted_job["status"],
+                    "assigned_driver_uid": accepted_job["assigned_driver_uid"],
+                    "assigned_trip_id": accepted_job["assigned_trip_id"],
+                    "assigned_at": accepted_job["assigned_at"],
+                    "updated_at": accepted_job["updated_at"],
+                }
+            )
+            .eq("id", job_id)
+            .eq("status", "open")
+            .execute()
+        )
+        if not update_response.data:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Job is not available")
+
         trip_data = {
+            "id": trip_id,
             "job_id": job_id,
             "driver_uid": uid,
             "pickup_location": job.get("pickup_location"),
@@ -119,16 +350,6 @@ def accept_job(
             "updated_at": now,
         }
         trip = get_supabase().table("trips").insert(trip_data).execute().data[0]
-
-        get_supabase().table("jobs").update(
-            {
-                "status": "assigned",
-                "assigned_driver_uid": uid,
-                "assigned_trip_id": trip["id"],
-                "assigned_at": now,
-                "updated_at": now,
-            }
-        ).eq("id", job_id).execute()
 
         get_supabase().table("notifications").insert(
             {
@@ -145,10 +366,10 @@ def accept_job(
             "message": "Job accepted",
             "job_id": job_id,
             "trip_id": trip["id"],
+            "job": _job_with_id(accepted_job),
             "trip": _trip_with_id(trip),
         }
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-

@@ -1,9 +1,12 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from firebase_admin import auth
+import hashlib
 import secrets
 import time
+from typing import Tuple
 
+from config import settings
 from dev_auth import store_custom_token
 from supabase_config import get_supabase
 
@@ -36,12 +39,42 @@ def _ensure_supabase_profile(uid: str, phone: str) -> None:
     ).execute()
 
 
+def _try_ensure_supabase_profile(uid: str, phone: str) -> None:
+    try:
+        _ensure_supabase_profile(uid, phone)
+    except Exception as e:
+        print(f"Skipping Supabase profile sync for dev auth: {e}")
+
+
 def _ensure_supabase_auth_claim(uid: str) -> None:
     """Prepare Firebase users for future Supabase Third-Party Auth."""
     user = auth.get_user(uid)
     claims = user.custom_claims or {}
     if claims.get("role") != "authenticated":
         auth.set_custom_user_claims(uid, {**claims, "role": "authenticated"})
+
+
+def _dev_uid_for_phone(phone: str) -> str:
+    digest = hashlib.sha256(phone.encode("utf-8")).hexdigest()[:24]
+    return f"dev_{digest}"
+
+
+def _create_dev_auth_session(phone: str) -> Tuple[str, str]:
+    uid = _dev_uid_for_phone(phone)
+    token = f"dev_{secrets.token_urlsafe(32)}"
+    store_custom_token(token, uid)
+    return uid, token
+
+
+def _dev_auth_response(phone: str) -> dict:
+    uid, token = _create_dev_auth_session(phone)
+    _try_ensure_supabase_profile(uid, phone)
+    otp_store.pop(phone, None)
+    return {
+        "message": "OTP verified with dev auth",
+        "uid": uid,
+        "token": token,
+    }
 
 @router.post("/signin")
 def sign_in(request: SignInRequest):
@@ -100,20 +133,34 @@ def verify_otp(request: OTPVerifyRequest):
             user = auth.get_user_by_phone_number(f"+91{phone}")
             uid = user.uid
         except auth.UserNotFoundError:
-            # Create new user
-            user = auth.create_user(phone_number=f"+91{phone}")
-            uid = user.uid
+            try:
+                # Create new user
+                user = auth.create_user(phone_number=f"+91{phone}")
+                uid = user.uid
+            except Exception:
+                if not settings.allow_custom_token_auth:
+                    raise
+                return _dev_auth_response(phone)
+        except Exception:
+            if not settings.allow_custom_token_auth:
+                raise
+            return _dev_auth_response(phone)
 
-        _ensure_supabase_auth_claim(uid)
-        _ensure_supabase_profile(uid, phone)
-        
-        # Generate custom token for Flutter app
-        custom_token = auth.create_custom_token(uid)
-        token = custom_token.decode("utf-8")
-        store_custom_token(token, uid)
+        try:
+            _ensure_supabase_auth_claim(uid)
+            _ensure_supabase_profile(uid, phone)
+
+            # Generate custom token for Flutter app
+            custom_token = auth.create_custom_token(uid)
+            token = custom_token.decode("utf-8")
+            store_custom_token(token, uid)
+        except Exception:
+            if not settings.allow_custom_token_auth:
+                raise
+            return _dev_auth_response(phone)
         
         # Clean up OTP
-        del otp_store[phone]
+        otp_store.pop(phone, None)
         
         return {
             "message": "OTP verified",

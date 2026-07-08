@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 
+from role_profiles import get_role_profile, upsert_role_profile
 from supabase_config import get_supabase
 
 router = APIRouter()
@@ -43,6 +44,9 @@ def get_driver(uid: str):
     """Get driver profile."""
     try:
         profile = _profile_or_404(uid)
+        driver_profile = get_role_profile("driver_profiles", "driver_uid", uid)
+        if driver_profile:
+            profile.update(driver_profile)
         location = (
             get_supabase()
             .table("driver_locations")
@@ -67,8 +71,9 @@ def update_driver(uid: str, driver: DriverProfile):
     try:
         data = driver.model_dump(exclude_unset=True)
         current_location = data.pop("current_location", None)
+        vehicle_number = data.pop("vehicle_number", None)
 
-        if not data and not current_location:
+        if not data and not vehicle_number and not current_location:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Send at least one valid field: name, vehicle_number, current_location",
@@ -81,6 +86,26 @@ def update_driver(uid: str, driver: DriverProfile):
                 data,
                 on_conflict="firebase_uid",
             ).execute()
+
+        if vehicle_number:
+            driver_profile = upsert_role_profile(
+                "driver_profiles",
+                {
+                    "driver_uid": uid,
+                    "vehicle_number": vehicle_number,
+                    "updated_at": _now(),
+                },
+                "driver_uid",
+            )
+            if driver_profile is None:
+                get_supabase().table("profiles").upsert(
+                    {
+                        "firebase_uid": uid,
+                        "vehicle_number": vehicle_number,
+                        "updated_at": _now(),
+                    },
+                    on_conflict="firebase_uid",
+                ).execute()
 
         if current_location:
             get_supabase().table("driver_locations").upsert(
@@ -97,12 +122,15 @@ def update_driver(uid: str, driver: DriverProfile):
         updated_profile = (
             get_supabase()
             .table("profiles")
-            .select("firebase_uid,name,vehicle_number,updated_at")
+            .select("firebase_uid,name,updated_at")
             .eq("firebase_uid", uid)
             .maybe_single()
             .execute()
             .data
-        )
+        ) or {"firebase_uid": uid}
+        driver_profile = get_role_profile("driver_profiles", "driver_uid", uid)
+        if driver_profile:
+            updated_profile.update(driver_profile)
 
         return {
             "message": "Driver profile updated",

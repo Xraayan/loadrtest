@@ -47,27 +47,46 @@ class _LocationScreenState extends State<LocationScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final uid = prefs.getString('uid');
+      final role = prefs.getString('selected_role') ?? 'driver';
 
       if (uid == null) {
         throw Exception('User not authenticated');
       }
 
       final position = await _determinePosition();
+      final label = await _labelForLocation(position);
       final location = {
         'latitude': position.latitude,
         'longitude': position.longitude,
         'is_active': true,
       };
 
-      await ApiService.updateLocation(uid, location);
-      await prefs.setDouble('last_latitude', position.latitude);
-      await prefs.setDouble('last_longitude', position.longitude);
+      if (role == 'user') {
+        await ApiService.cacheLocation(
+          role: 'customer',
+          latitude: position.latitude,
+          longitude: position.longitude,
+          label: label,
+        );
+      } else {
+        await ApiService.updateLocation(uid, location);
+        await ApiService.cacheLocation(
+          role: 'driver',
+          latitude: position.latitude,
+          longitude: position.longitude,
+          isActive: true,
+          label: label,
+        );
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Location saved')),
         );
-        Navigator.pushNamed(context, '/driver-details');
+        Navigator.pushReplacementNamed(
+          context,
+          _nextRoute(role, prefs),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -83,7 +102,25 @@ class _LocationScreenState extends State<LocationScreen> {
   }
 
   void _handleSkip() {
-    Navigator.pushNamed(context, '/driver-details');
+    SharedPreferences.getInstance().then((prefs) {
+      if (!mounted) return;
+      final role = prefs.getString('selected_role') ?? 'driver';
+      Navigator.pushReplacementNamed(
+        context,
+        _nextRoute(role, prefs),
+      );
+    });
+  }
+
+  String _nextRoute(String role, SharedPreferences prefs) {
+    if (role == 'user') {
+      final hasProfile = (prefs.getString('customer_name') ?? '').isNotEmpty;
+      return hasProfile ? '/customer-home' : '/customer-details';
+    }
+
+    final hasProfile = (prefs.getString('driver_name') ?? '').isNotEmpty &&
+        (prefs.getString('driver_vehicle_number') ?? '').isNotEmpty;
+    return hasProfile ? '/dashboard' : '/driver-details';
   }
 
   @override
@@ -94,13 +131,13 @@ class _LocationScreenState extends State<LocationScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.location_on, size: 150, color: kPrimaryOrange),
+            const Icon(Icons.location_on, size: 112, color: kPrimaryOrange),
             const SizedBox(height: 40),
             const Text("Enable Your Location",
                 style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
             const Text(
-                "To search for the best nearby driver, we want to know your current location",
+                "LoadR uses your saved location for nearby loads, pickups, and dashboard status.",
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.grey)),
             const SizedBox(height: 50),
@@ -130,5 +167,25 @@ class _LocationScreenState extends State<LocationScreen> {
         ),
       ),
     );
+  }
+
+  Future<String?> _labelForLocation(Position position) async {
+    try {
+      final place = await ApiService.reverseGeocode(
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+      final city = place.city.trim().isNotEmpty
+          ? place.city.trim()
+          : place.district.trim();
+      final state = place.state.trim();
+      if (city.isEmpty) {
+        return place.displayName.trim().isEmpty ? null : place.displayName;
+      }
+      if (state.isEmpty || city.toLowerCase() == state.toLowerCase()) return city;
+      return '$city, $state';
+    } catch (_) {
+      return null;
+    }
   }
 }
