@@ -9,6 +9,7 @@ import 'package:loadr/screens/customer_details_screen.dart';
 import 'package:loadr/screens/customer_home_screen.dart';
 import 'package:loadr/screens/driver_active_trip_screen.dart';
 import 'package:loadr/screens/new_trip_screen.dart';
+import 'package:loadr/screens/driver_load_request_screen.dart';
 import 'package:loadr/screens/profile_screen.dart';
 import 'package:loadr/screens/request_quote_screen.dart';
 import 'package:loadr/screens/request_vehicle_screen.dart';
@@ -66,6 +67,7 @@ class LoadRApp extends StatelessWidget {
         '/success': (context) => const ActivationSuccessScreen(),
         '/dashboard': (context) => const DashboardScreen(),
         '/driver-active-trip': (context) => const DriverActiveTripScreen(),
+        '/driver-load-request': (context) => const DriverLoadRequestScreen(),
         '/all-trips': (context) => const AllTripScreen(),
         '/new-trips': (context) => const NewTripScreen(),
         '/driver-details': (context) => const DriverDetailsScreen(),

@@ -7,6 +7,7 @@ import 'package:loadr/screens/driver_details_screen.dart';
 import 'package:loadr/screens/landing_screen.dart';
 import 'package:loadr/screens/location_screen.dart';
 import 'package:loadr/screens/role_selection_screen.dart';
+import 'package:loadr/services/api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthGate extends StatelessWidget {
@@ -40,6 +41,12 @@ class AuthGate extends StatelessWidget {
       return const LandingScreen();
     }
 
+    try {
+      await ApiService.getUserState(uid);
+    } catch (_) {
+      // Keep using the locally cached session if the backend is unavailable.
+    }
+
     final role = prefs.getString('selected_role');
     if (role == null || role.isEmpty) {
       return const RoleSelectionScreen();
@@ -48,10 +55,7 @@ class AuthGate extends StatelessWidget {
     if (role == 'user') {
       final hasProfile = (prefs.getString('customer_name') ?? '').isNotEmpty;
       if (hasProfile) return const CustomerHomeScreen();
-
-      final hasLocation = prefs.getDouble('customer_latitude') != null &&
-          prefs.getDouble('customer_longitude') != null;
-      return hasLocation ? const CustomerDetailsScreen() : const LocationScreen();
+      return const CustomerDetailsScreen();
     }
 
     final hasDriverProfile = (prefs.getString('driver_name') ?? '').isNotEmpty &&

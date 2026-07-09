@@ -23,6 +23,7 @@ class DashboardScreenState extends State<DashboardScreen> {
   String _vehicleNumber = 'KL 33 G 3532';
   String _locationText = 'Kottayam, Kerala';
   Map<String, dynamic>? _activeJob;
+  int? _openLoadCount;
 
   @override
   void initState() {
@@ -119,6 +120,18 @@ class DashboardScreenState extends State<DashboardScreen> {
     } catch (_) {
       // Keep cached active job if the backend is temporarily unavailable.
     }
+
+    if (_activeJob == null) {
+      try {
+        final jobs = await ApiService.getJobs();
+        if (!mounted) return;
+        setState(() => _openLoadCount = jobs.length);
+      } catch (_) {
+        // Keep the last known count if jobs cannot be refreshed right now.
+      }
+    } else if (mounted) {
+      setState(() => _openLoadCount = null);
+    }
   }
 
   @override
@@ -155,6 +168,7 @@ class DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 12),
             _PrimaryActionCard(
               job: _activeJob,
+              openLoadCount: _openLoadCount,
               onTap: () async {
                 await Navigator.pushNamed(
                   context,
@@ -451,10 +465,12 @@ class _StatusInfoRow extends StatelessWidget {
 
 class _PrimaryActionCard extends StatelessWidget {
   final Map<String, dynamic>? job;
+  final int? openLoadCount;
   final VoidCallback onTap;
 
   const _PrimaryActionCard({
     required this.job,
+    required this.openLoadCount,
     required this.onTap,
   });
 
@@ -465,7 +481,7 @@ class _PrimaryActionCard extends StatelessWidget {
     final title = hasJob ? 'Accepted load' : 'New Trips';
     final subtitle = hasJob
         ? _routeSummary(activeJob)
-        : '3 loads available nearby';
+        : _openLoadSubtitle(openLoadCount);
     final cta = hasJob ? 'View trip' : 'View loads';
     final amount = hasJob ? _amountText(activeJob) : null;
 
@@ -582,6 +598,13 @@ class _PrimaryActionCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _openLoadSubtitle(int? count) {
+    if (count == null) return 'Checking open loads';
+    if (count == 0) return 'No open loads right now';
+    if (count == 1) return '1 open load available';
+    return '$count open loads available';
   }
 
   String _routeSummary(Map<String, dynamic> job) {

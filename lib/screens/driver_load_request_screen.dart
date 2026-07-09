@@ -6,18 +6,19 @@ import 'package:loadr/models/place_suggestion.dart';
 import 'package:loadr/models/ride_quote.dart';
 import 'package:loadr/services/api_service.dart';
 
-class DriverActiveTripScreen extends StatefulWidget {
-  const DriverActiveTripScreen({super.key});
+class DriverLoadRequestScreen extends StatefulWidget {
+  const DriverLoadRequestScreen({super.key});
 
   @override
-  State<DriverActiveTripScreen> createState() => _DriverActiveTripScreenState();
+  State<DriverLoadRequestScreen> createState() => _DriverLoadRequestScreenState();
 }
 
-class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
+class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
   final _mapController = MapController();
   Map<String, dynamic>? _job;
   RideEstimate? _estimate;
   bool _isLoading = true;
+  bool _isAccepting = false;
   String? _error;
 
   @override
@@ -25,27 +26,18 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final args = ModalRoute.of(context)?.settings.arguments;
-      _loadTrip(args is Map ? Map<String, dynamic>.from(args) : null);
+      _loadRequest(args is Map ? Map<String, dynamic>.from(args) : null);
     });
   }
 
-  Future<void> _loadTrip(Map<String, dynamic>? initialJob) async {
+  Future<void> _loadRequest(Map<String, dynamic>? job) async {
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
-      final uid = await ApiService.getUid();
-      if (uid == null) {
-        throw Exception('User not authenticated');
-      }
-
-      final job = initialJob ?? await ApiService.getDriverActiveJob(uid);
-      if (job == null) {
-        throw Exception('No active load found');
-      }
-
+      if (job == null) throw Exception('Load request not found');
       final pickup = _placeFromJob(job, pickup: true);
       final drop = _placeFromJob(job, pickup: false);
       final estimate = await ApiService.estimateRide(
@@ -54,7 +46,6 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
         vehicleType: _text(job['vehicle_type'], fallback: 'Pickup'),
         schedule: 'Now',
       );
-
       if (!mounted) return;
       setState(() {
         _job = job;
@@ -67,6 +58,48 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
         _error = '$e';
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _acceptLoad() async {
+    final job = _job;
+    if (job == null) return;
+
+    setState(() => _isAccepting = true);
+    try {
+      final uid = await ApiService.getUid();
+      if (uid == null) throw Exception('User not authenticated');
+
+      final activeJob = await ApiService.getDriverActiveJob(uid);
+      if (activeJob != null) {
+        throw Exception('Finish your active load before accepting another one');
+      }
+
+      final jobId = '${job['job_id'] ?? job['id']}';
+      final response = await ApiService.acceptJob(uid, jobId);
+      final acceptedJob = response['job'] is Map
+          ? Map<String, dynamic>.from(response['job'] as Map)
+          : job;
+      final activeLoad = {
+        ...acceptedJob,
+        'status': 'accepted',
+        'trip_id': response['trip_id'],
+      };
+      await ApiService.cacheDriverActiveJob(activeLoad);
+
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(
+        context,
+        '/driver-active-trip',
+        arguments: activeLoad,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Accept failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isAccepting = false);
     }
   }
 
@@ -85,17 +118,17 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
         backgroundColor: const Color(0xFFF7F7F7),
         appBar: AppBar(
           backgroundColor: Colors.white,
-          title: const Text('Active trip'),
+          title: const Text('Load request'),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
-            onPressed: () => _goBack(context),
+            onPressed: _goBack,
           ),
         ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Text(
-              _error ?? 'No active load found',
+              _error ?? 'Load request not found',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Colors.black54,
@@ -200,16 +233,17 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
               child: _TopBar(
                 pickup: _shortLocation(pickup.displayName),
                 drop: _shortLocation(drop.displayName),
-                onBack: () => _goBack(context),
+                onBack: _goBack,
               ),
             ),
           ),
           Align(
             alignment: Alignment.bottomCenter,
-            child: _TripPanel(
+            child: _LoadRequestPanel(
               job: job,
               estimate: estimate,
-              onRefresh: () => _loadTrip(null),
+              isAccepting: _isAccepting,
+              onAccept: _acceptLoad,
             ),
           ),
         ],
@@ -231,31 +265,34 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
     return 8;
   }
 
-  void _goBack(BuildContext context) {
+  void _goBack() {
     if (Navigator.canPop(context)) {
       Navigator.maybePop(context);
     } else {
-      Navigator.pushReplacementNamed(context, '/dashboard');
+      Navigator.pushReplacementNamed(context, '/new-trips');
     }
   }
 }
 
-class _TripPanel extends StatelessWidget {
+class _LoadRequestPanel extends StatelessWidget {
   final Map<String, dynamic> job;
   final RideEstimate estimate;
-  final VoidCallback onRefresh;
+  final bool isAccepting;
+  final VoidCallback onAccept;
 
-  const _TripPanel({
+  const _LoadRequestPanel({
     required this.job,
     required this.estimate,
-    required this.onRefresh,
+    required this.isAccepting,
+    required this.onAccept,
   });
 
   @override
   Widget build(BuildContext context) {
     final amount = _asDouble(job['amount']);
-    final status = _text(job['status'], fallback: 'accepted');
     final vehicleType = _text(job['vehicle_type'], fallback: 'Vehicle');
+    final city = _text(job['city'], fallback: 'Any city');
+    final district = _text(job['district'], fallback: 'Any district');
     final pickup = _shortLocation(_text(job['pickup_location']));
     final drop = _shortLocation(_text(job['dropoff_location']));
 
@@ -291,10 +328,11 @@ class _TripPanel extends StatelessWidget {
             ),
             const SizedBox(height: 18),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Expanded(
                   child: Text(
-                    'Accepted load',
+                    'Load request',
                     style: TextStyle(
                       color: Colors.black87,
                       fontSize: 24,
@@ -302,59 +340,60 @@ class _TripPanel extends StatelessWidget {
                     ),
                   ),
                 ),
-                _StatusPill(label: status),
-              ],
-            ),
-            const SizedBox(height: 14),
-            _RouteSummary(pickup: pickup, drop: drop),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _InfoChip(
-                        icon: Icons.local_shipping_outlined,
-                        label: vehicleType,
-                      ),
-                      _InfoChip(
-                        icon: Icons.route,
-                        label: '${estimate.distanceKm.toStringAsFixed(1)} km',
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
                 Text(
                   'Rs ${amount.toStringAsFixed(0)}',
                   style: const TextStyle(
-                    color: Colors.black87,
-                    fontSize: 20,
+                    color: kPrimaryOrange,
+                    fontSize: 22,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
               ],
             ),
+            const SizedBox(height: 14),
+            _RouteSummary(pickup: pickup, drop: drop),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _InfoChip(icon: Icons.local_shipping_outlined, label: vehicleType),
+                _InfoChip(
+                  icon: Icons.route,
+                  label: '${estimate.distanceKm.toStringAsFixed(1)} km',
+                ),
+                _InfoChip(icon: Icons.location_city_outlined, label: city),
+                _InfoChip(icon: Icons.map_outlined, label: district),
+              ],
+            ),
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
-              height: 52,
+              height: 54,
               child: ElevatedButton.icon(
-                onPressed: onRefresh,
+                onPressed: isAccepting ? null : onAccept,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: kPrimaryOrange,
                   foregroundColor: Colors.white,
+                  disabledBackgroundColor: kPrimaryOrange.withOpacity(0.55),
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                icon: const Icon(Icons.refresh),
-                label: const Text(
-                  'Refresh trip',
-                  style: TextStyle(fontWeight: FontWeight.w900),
+                icon: isAccepting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.check_circle_outline),
+                label: Text(
+                  isAccepting ? 'Accepting...' : 'Accept Load',
+                  style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
               ),
             ),
@@ -530,31 +569,6 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
-class _StatusPill extends StatelessWidget {
-  final String label;
-
-  const _StatusPill({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE8F5E9),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label.replaceAll('_', ' ').toUpperCase(),
-        style: const TextStyle(
-          color: Color(0xFF2E7D32),
-          fontSize: 12,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}
-
 class _RouteMarker extends StatelessWidget {
   final IconData icon;
   final Color backgroundColor;
@@ -659,5 +673,5 @@ String _shortLocation(String value) {
       .where((part) => part.isNotEmpty)
       .toList();
   if (parts.isEmpty) return value;
-  return parts.first;
+  return parts.length <= 2 ? parts.join(', ') : parts.take(2).join(', ');
 }

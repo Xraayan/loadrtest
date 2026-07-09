@@ -41,6 +41,9 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
   RideEstimate? _rideEstimate;
   String _latestPickupQuery = '';
   String _latestDropQuery = '';
+  String _lastPickupSearchQuery = '';
+  String _lastDropSearchQuery = '';
+  String? _estimatedRouteKey;
 
   Future<Position> _determinePosition() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -70,7 +73,11 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
     );
   }
 
-  Future<void> _openMapPicker() async {
+  Future<void> _openMapPickerFor(bool isPickup) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    if (!mounted) return;
+
     final result = await showModalBottomSheet<_MapPickerResult>(
       context: context,
       isScrollControlled: true,
@@ -78,7 +85,7 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) {
         return _MapPickerSheet(
-          initialIsPickup: _pickupPlace == null,
+          initialIsPickup: isPickup,
           pickupPlace: _pickupPlace,
           dropPlace: _dropPlace,
           resolveCurrentPosition: _determinePosition,
@@ -110,6 +117,7 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
       _locationSearchError = null;
       _estimateError = null;
       _rideEstimate = null;
+      _estimatedRouteKey = null;
       if (isPickup) {
         _pickupPlace = null;
         _latestPickupQuery = query;
@@ -119,16 +127,21 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
       }
     });
 
-    if (query.length < 3) {
+    if (query.length < 4) {
       setState(() {
         _locationSuggestions = [];
         _isSearchingLocation = false;
+        if (isPickup) {
+          _lastPickupSearchQuery = '';
+        } else {
+          _lastDropSearchQuery = '';
+        }
       });
       return;
     }
 
     final debounce = Timer(
-      const Duration(milliseconds: 500),
+      const Duration(milliseconds: 900),
       () => _searchLocation(isPickup: isPickup, query: query),
     );
 
@@ -143,6 +156,17 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
     required bool isPickup,
     required String query,
   }) async {
+    if (_currentQuery(isPickup) != query || query.length < 4) return;
+
+    final lastQuery = isPickup ? _lastPickupSearchQuery : _lastDropSearchQuery;
+    if (lastQuery == query) return;
+
+    if (isPickup) {
+      _lastPickupSearchQuery = query;
+    } else {
+      _lastDropSearchQuery = query;
+    }
+
     setState(() {
       _searchingPickup = isPickup;
       _isSearchingLocation = true;
@@ -185,6 +209,7 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
       _locationSuggestions = [];
       _locationSearchError = null;
       _estimateError = null;
+      _estimatedRouteKey = null;
     });
     FocusScope.of(context).unfocus();
     _loadEstimateIfReady();
@@ -198,14 +223,30 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
     return _rideEstimate?.quoteFor(vehicleType);
   }
 
+  String _estimateKeyFor(PlaceSuggestion pickup, PlaceSuggestion drop) {
+    return '${pickup.latitude.toStringAsFixed(6)},'
+        '${pickup.longitude.toStringAsFixed(6)}|'
+        '${drop.latitude.toStringAsFixed(6)},'
+        '${drop.longitude.toStringAsFixed(6)}';
+  }
+
   Future<RideEstimate?> _loadEstimateIfReady() async {
     final pickup = _pickupPlace;
     final drop = _dropPlace;
     if (pickup == null || drop == null) return null;
 
+    final estimateKey = _estimateKeyFor(pickup, drop);
+    if (_rideEstimate != null && _estimatedRouteKey == estimateKey) {
+      return _rideEstimate;
+    }
+    if (_isEstimatingRide && _estimatedRouteKey == estimateKey) {
+      return _rideEstimate;
+    }
+
     setState(() {
       _isEstimatingRide = true;
       _estimateError = null;
+      _estimatedRouteKey = estimateKey;
     });
 
     try {
@@ -222,6 +263,7 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
       if (!mounted) return null;
       setState(() {
         _rideEstimate = null;
+        _estimatedRouteKey = null;
         _estimateError = '$e';
       });
       return null;
@@ -363,6 +405,8 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
                 isPickup: false,
                 value: value,
               ),
+              onPickupMapTap: () => _openMapPickerFor(true),
+              onDropMapTap: () => _openMapPickerFor(false),
             ),
             _InlineLocationSuggestions(
               suggestions: _locationSuggestions,
@@ -372,8 +416,6 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
                 place: place,
               ),
             ),
-            const SizedBox(height: 12),
-            _MapActionTile(onTap: _openMapPicker),
             const SizedBox(height: 28),
             const _SectionTitle('Schedule'),
             const SizedBox(height: 12),
@@ -381,7 +423,6 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
               selectedValue: _selectedSchedule,
               onChanged: (value) {
                 setState(() => _selectedSchedule = value);
-                _loadEstimateIfReady();
               },
             ),
             const SizedBox(height: 28),
@@ -403,7 +444,6 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
                       return;
                     }
                     setState(() => _selectedVehicle = suggested);
-                    _loadEstimateIfReady();
                   },
                 ),
                 for (final vehicle in const [
@@ -418,7 +458,6 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
                     selected: _selectedVehicle == vehicle,
                     onTap: () {
                       setState(() => _selectedVehicle = vehicle);
-                      _loadEstimateIfReady();
                     },
                   ),
               ],
@@ -497,6 +536,8 @@ class _RouteInputCard extends StatelessWidget {
   final VoidCallback onDropFocus;
   final ValueChanged<String> onPickupChanged;
   final ValueChanged<String> onDropChanged;
+  final VoidCallback onPickupMapTap;
+  final VoidCallback onDropMapTap;
 
   const _RouteInputCard({
     required this.pickupController,
@@ -511,6 +552,8 @@ class _RouteInputCard extends StatelessWidget {
     required this.onDropFocus,
     required this.onPickupChanged,
     required this.onDropChanged,
+    required this.onPickupMapTap,
+    required this.onDropMapTap,
   });
 
   @override
@@ -547,6 +590,7 @@ class _RouteInputCard extends StatelessWidget {
                   loading: loadingPickup,
                   onFocus: onPickupFocus,
                   onChanged: onPickupChanged,
+                  onMapTap: onPickupMapTap,
                 ),
                 const Divider(height: 1, color: Color(0xFFEDEDED)),
                 _RouteLocationRow(
@@ -558,6 +602,7 @@ class _RouteInputCard extends StatelessWidget {
                   loading: loadingDrop,
                   onFocus: onDropFocus,
                   onChanged: onDropChanged,
+                  onMapTap: onDropMapTap,
                 ),
               ],
             ),
@@ -626,6 +671,7 @@ class _RouteLocationRow extends StatelessWidget {
   final bool loading;
   final VoidCallback onFocus;
   final ValueChanged<String> onChanged;
+  final VoidCallback onMapTap;
 
   const _RouteLocationRow({
     required this.controller,
@@ -636,6 +682,7 @@ class _RouteLocationRow extends StatelessWidget {
     required this.loading,
     required this.onFocus,
     required this.onChanged,
+    required this.onMapTap,
   });
 
   @override
@@ -684,21 +731,38 @@ class _RouteLocationRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 160),
-                child: loading
-                    ? const SizedBox(
-                        key: ValueKey('loading'),
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Icon(
-                        selected ? Icons.check_circle : Icons.search,
-                        key: ValueKey(selected),
-                        color: selected ? kPrimaryOrange : Colors.black26,
-                        size: 20,
-                      ),
+              SizedBox(
+                width: 40,
+                height: 40,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 160),
+                  child: loading
+                      ? const Center(
+                          key: ValueKey('loading'),
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : IconButton(
+                          key: ValueKey('map-$selected'),
+                          tooltip: selected ? 'Change on map' : 'Set on map',
+                          onPressed: onMapTap,
+                          style: IconButton.styleFrom(
+                            backgroundColor: selected
+                                ? kPrimaryOrange.withOpacity(0.10)
+                                : const Color(0xFFF5F5F5),
+                            foregroundColor:
+                                selected ? kPrimaryOrange : Colors.black45,
+                            padding: EdgeInsets.zero,
+                          ),
+                          icon: const Icon(
+                            Icons.my_location_outlined,
+                            size: 20,
+                          ),
+                        ),
+                ),
               ),
             ],
           ),
@@ -774,50 +838,6 @@ class _InlineLocationSuggestions extends StatelessWidget {
   }
 }
 
-class _MapActionTile extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _MapActionTile({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          height: 52,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE8E8E8)),
-          ),
-          child: const Row(
-            children: [
-              Icon(Icons.add_location_alt_outlined, color: Color(0xB3000000)),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Set location on map',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.black87,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              Icon(Icons.chevron_right, color: Colors.black38),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _MapPickerSheet extends StatefulWidget {
   final bool initialIsPickup;
   final PlaceSuggestion? pickupPlace;
@@ -842,7 +862,11 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
   late bool _isPickup;
   late LatLng _selectedPoint;
   String? _selectedAddress;
+  PlaceSuggestion? _resolvedPlace;
+  Timer? _reverseDebounce;
+  int _reverseLookupId = 0;
   bool _loading = false;
+  bool _resolvingAddress = false;
   String? _error;
 
   @override
@@ -850,7 +874,13 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
     super.initState();
     _isPickup = widget.initialIsPickup;
     _selectedPoint = _pointForCurrentField() ?? _defaultCenter;
-    _selectedAddress = _currentPlace?.displayName;
+    _resolvedPlace = _currentPlace;
+    _selectedAddress = _resolvedPlace?.displayName;
+    if (_selectedAddress == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scheduleReverseLookup();
+      });
+    }
   }
 
   PlaceSuggestion? get _currentPlace {
@@ -876,8 +906,10 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
       setState(() {
         _selectedPoint = point;
         _selectedAddress = null;
+        _resolvedPlace = null;
       });
-      _mapController.move(point, 16);
+      _moveMap(point, 16);
+      _scheduleReverseLookup();
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = '$e');
@@ -897,23 +929,98 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
     setState(() {
       _isPickup = isPickup;
       _selectedPoint = nextPoint;
-      _selectedAddress = nextPlace?.displayName;
+      _resolvedPlace = nextPlace;
+      _selectedAddress = _resolvedPlace?.displayName;
       _error = null;
     });
-    _mapController.move(nextPoint, 15);
+    _moveMap(nextPoint, 15);
+    if (_selectedAddress == null) {
+      _scheduleReverseLookup();
+    }
+  }
+
+  void _moveMap(LatLng point, double zoom) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      try {
+        _mapController.move(point, zoom);
+      } catch (_) {
+        // The map controller can be briefly unattached while the sheet lays out.
+      }
+    });
+  }
+
+  void _setSelectedPoint(LatLng point) {
+    setState(() {
+      _selectedPoint = point;
+      _selectedAddress = null;
+      _resolvedPlace = null;
+      _error = null;
+    });
+    _scheduleReverseLookup();
+  }
+
+  void _scheduleReverseLookup() {
+    _reverseDebounce?.cancel();
+    final point = _selectedPoint;
+    setState(() => _resolvingAddress = true);
+    _reverseDebounce = Timer(
+      const Duration(milliseconds: 700),
+      () async {
+        try {
+          await _reverseLookup(point);
+        } catch (_) {
+          // Passive map preview lookup can fail; confirmation will retry.
+        }
+      },
+    );
+  }
+
+  Future<PlaceSuggestion> _reverseLookup(LatLng point) async {
+    final lookupId = ++_reverseLookupId;
+    if (mounted) {
+      setState(() => _resolvingAddress = true);
+    }
+
+    try {
+      final place = await LocationSearchService.reverseGeocode(
+        latitude: point.latitude,
+        longitude: point.longitude,
+      );
+      if (!mounted || lookupId != _reverseLookupId) return place;
+      final selectedPlace = _placeAtPoint(place, point);
+      setState(() {
+        _resolvedPlace = selectedPlace;
+        _selectedAddress = selectedPlace.displayName;
+      });
+      return selectedPlace;
+    } finally {
+      if (mounted && lookupId == _reverseLookupId) {
+        setState(() => _resolvingAddress = false);
+      }
+    }
+  }
+
+  PlaceSuggestion _placeAtPoint(PlaceSuggestion place, LatLng point) {
+    return PlaceSuggestion(
+      displayName: place.displayName,
+      latitude: point.latitude,
+      longitude: point.longitude,
+      city: place.city,
+      district: place.district,
+      state: place.state,
+    );
   }
 
   Future<void> _confirm() async {
+    _reverseDebounce?.cancel();
     setState(() {
       _loading = true;
       _error = null;
     });
 
     try {
-      final place = await LocationSearchService.reverseGeocode(
-        latitude: _selectedPoint.latitude,
-        longitude: _selectedPoint.longitude,
-      );
+      final place = _resolvedPlace ?? await _reverseLookup(_selectedPoint);
       if (!mounted) return;
       Navigator.pop(
         context,
@@ -931,17 +1038,19 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+    return FractionallySizedBox(
+      heightFactor: 0.88,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.max,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Center(
@@ -973,19 +1082,16 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
                 onChanged: (value) => _setField(value == 'Pick-up'),
               ),
               const SizedBox(height: 16),
-              _OsmMapPicker(
-                controller: _mapController,
-                selectedPoint: _selectedPoint,
-                selectedAddress: _selectedAddress,
-                loading: _loading,
-                onPositionChanged: (point) {
-                  setState(() {
-                    _selectedPoint = point;
-                    _selectedAddress = null;
-                    _error = null;
-                  });
-                },
-                onUseCurrentLocation: _moveToCurrentLocation,
+              Expanded(
+                child: _OsmMapPicker(
+                  controller: _mapController,
+                  selectedPoint: _selectedPoint,
+                  selectedAddress: _selectedAddress,
+                  loading: _loading,
+                  resolvingAddress: _resolvingAddress,
+                  onPositionChanged: _setSelectedPoint,
+                  onUseCurrentLocation: _moveToCurrentLocation,
+                ),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 12),
@@ -1012,10 +1118,17 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
                 ),
               ),
             ],
-          ),
+            ),
         ),
       ),
+      ),
     );
+  }
+
+  @override
+  void dispose() {
+    _reverseDebounce?.cancel();
+    super.dispose();
   }
 }
 
@@ -1024,6 +1137,7 @@ class _OsmMapPicker extends StatelessWidget {
   final LatLng selectedPoint;
   final String? selectedAddress;
   final bool loading;
+  final bool resolvingAddress;
   final ValueChanged<LatLng> onPositionChanged;
   final VoidCallback onUseCurrentLocation;
 
@@ -1032,6 +1146,7 @@ class _OsmMapPicker extends StatelessWidget {
     required this.selectedPoint,
     required this.selectedAddress,
     required this.loading,
+    required this.resolvingAddress,
     required this.onPositionChanged,
     required this.onUseCurrentLocation,
   });
@@ -1039,7 +1154,6 @@ class _OsmMapPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 220,
       width: double.infinity,
       decoration: BoxDecoration(
         color: const Color(0xFFF4F5F6),
@@ -1070,8 +1184,9 @@ class _OsmMapPicker extends StatelessWidget {
               ),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  urlTemplate: ApiService.mapTileUrlTemplate,
                   userAgentPackageName: 'com.loadr.app',
+                  tileSize: 512,
                   maxZoom: 19,
                 ),
                 const RichAttributionWidget(
@@ -1116,8 +1231,9 @@ class _OsmMapPicker extends StatelessWidget {
                   Expanded(
                     child: Text(
                       selectedAddress ??
-                          '${selectedPoint.latitude.toStringAsFixed(5)}, '
-                              '${selectedPoint.longitude.toStringAsFixed(5)}',
+                          (resolvingAddress
+                              ? 'Finding location name...'
+                              : 'Move map to choose location'),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(

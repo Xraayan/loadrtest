@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:loadr/services/api_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class NewTripScreen extends StatefulWidget {
   const NewTripScreen({super.key});
@@ -14,7 +13,6 @@ class _NewTripScreenState extends State<NewTripScreen> {
   final TextEditingController stateController = TextEditingController();
   final TextEditingController cityController = TextEditingController();
   bool _isLoading = false;
-  String? _acceptingJobId;
   List<dynamic> _jobs = [];
 
   @override
@@ -51,45 +49,13 @@ class _NewTripScreenState extends State<NewTripScreen> {
     }
   }
 
-  Future<void> _acceptJob(Map<String, dynamic> job) async {
-    final jobId = '${job['job_id'] ?? job['id']}';
-    setState(() => _acceptingJobId = jobId);
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final uid = prefs.getString('uid');
-      if (uid == null) {
-        throw Exception('User not authenticated');
-      }
-
-      final activeJob = await ApiService.getDriverActiveJob(uid);
-      if (activeJob != null) {
-        throw Exception('Finish your active load before accepting another one');
-      }
-
-      final response = await ApiService.acceptJob(uid, jobId);
-      final acceptedJob = response['job'] is Map
-          ? Map<String, dynamic>.from(response['job'] as Map)
-          : job;
-      await ApiService.cacheDriverActiveJob({
-        ...acceptedJob,
-        'status': 'accepted',
-        'trip_id': response['trip_id'],
-      });
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Trip accepted')),
-      );
-      Navigator.pushReplacementNamed(context, '/all-trips');
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Accept failed: $e')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _acceptingJobId = null);
-      }
-    }
+  Future<void> _openJob(Map<String, dynamic> job) async {
+    await Navigator.pushNamed(
+      context,
+      '/driver-load-request',
+      arguments: job,
+    );
+    if (mounted) _loadJobs();
   }
 
   @override
@@ -110,7 +76,7 @@ class _NewTripScreenState extends State<NewTripScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         title: Text(
-          "New Trip",
+          'New Trip',
           style: GoogleFonts.poppins(
             color: Colors.black,
             fontWeight: FontWeight.w600,
@@ -123,7 +89,7 @@ class _NewTripScreenState extends State<NewTripScreen> {
           padding: const EdgeInsets.all(20),
           children: [
             Text(
-              "Find Loads",
+              'Find Loads',
               style: GoogleFonts.poppins(
                 fontSize: 30,
                 fontWeight: FontWeight.w600,
@@ -131,7 +97,7 @@ class _NewTripScreenState extends State<NewTripScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              "Search open loads by state or city, then accept one to create a trip.",
+              'Search open loads by state or city, then view the route before accepting.',
               style: GoogleFonts.poppins(color: Colors.black54, fontSize: 15),
             ),
             const SizedBox(height: 20),
@@ -182,9 +148,7 @@ class _NewTripScreenState extends State<NewTripScreen> {
               ..._jobs.map(
                 (job) => _JobCard(
                   job: job as Map<String, dynamic>,
-                  isAccepting:
-                      _acceptingJobId == '${job['job_id'] ?? job['id']}',
-                  onAccept: () => _acceptJob(job),
+                  onTap: () => _openJob(job),
                 ),
               ),
           ],
@@ -230,98 +194,99 @@ class _SearchField extends StatelessWidget {
 
 class _JobCard extends StatelessWidget {
   final Map<String, dynamic> job;
-  final bool isAccepting;
-  final VoidCallback onAccept;
+  final VoidCallback onTap;
 
   const _JobCard({
     required this.job,
-    required this.isAccepting,
-    required this.onAccept,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final amount = num.tryParse('${job['amount'] ?? 0}') ?? 0;
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 14),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: Colors.grey.shade200),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFECECEC)),
+            ),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    '${job['title'] ?? 'Open load'}',
-                    style: GoogleFonts.poppins(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${job['title'] ?? 'Open load'}',
+                        style: GoogleFonts.poppins(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      'Rs ${amount.toStringAsFixed(0)}',
+                      style: GoogleFonts.poppins(
+                        color: Colors.deepOrange,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _RouteLine(
+                  icon: Icons.trip_origin,
+                  label: '${job['pickup_location'] ?? '-'}',
+                ),
+                const SizedBox(height: 6),
+                _RouteLine(
+                  icon: Icons.location_on_outlined,
+                  label: '${job['dropoff_location'] ?? '-'}',
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _Chip(label: '${job['city'] ?? 'Any city'}'),
+                    _Chip(label: '${job['district'] ?? 'Any district'}'),
+                    _Chip(label: '${job['state'] ?? 'Any state'}'),
+                    _Chip(label: '${job['vehicle_type'] ?? 'Any vehicle'}'),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: OutlinedButton.icon(
+                    onPressed: onTap,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.deepOrange,
+                      side: const BorderSide(color: Color(0xFFFFC8B6)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    icon: const Icon(Icons.map_outlined),
+                    label: const Text(
+                      'View Details',
+                      style: TextStyle(fontWeight: FontWeight.w800),
                     ),
                   ),
                 ),
-                Text(
-                  '₹${amount.toStringAsFixed(0)}',
-                  style: GoogleFonts.poppins(
-                    color: Colors.deepOrange,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
               ],
             ),
-            const SizedBox(height: 12),
-            _RouteLine(
-              icon: Icons.trip_origin,
-              label: '${job['pickup_location'] ?? '-'}',
-            ),
-            const SizedBox(height: 6),
-            _RouteLine(
-              icon: Icons.location_on_outlined,
-              label: '${job['dropoff_location'] ?? '-'}',
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _Chip(label: '${job['city'] ?? 'Any city'}'),
-                _Chip(label: '${job['district'] ?? 'Any district'}'),
-                _Chip(label: '${job['state'] ?? 'Any state'}'),
-                _Chip(label: '${job['vehicle_type'] ?? 'Any vehicle'}'),
-              ],
-            ),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              height: 46,
-              child: ElevatedButton(
-                onPressed: isAccepting ? null : onAccept,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepOrange,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: isAccepting
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(color: Colors.white),
-                      )
-                    : const Text(
-                        'Accept Load',
-                        style: TextStyle(color: Colors.white),
-                      ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

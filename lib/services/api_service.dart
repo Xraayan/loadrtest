@@ -21,6 +21,10 @@ class ApiService {
     return 'http://localhost:8000/api';
   }
 
+  static String get mapTileUrlTemplate {
+    return '$baseUrl/map/tiles/{z}/{x}/{y}.png';
+  }
+
   // Sign in with phone number
   static Future<Map<String, dynamic>> signIn(String phone) async {
     try {
@@ -102,6 +106,103 @@ class ApiService {
   static Future<String?> getSelectedRole() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('selected_role');
+  }
+
+  static Future<Map<String, dynamic>?> getUserState(String uid) async {
+    try {
+      final token = await getAuthToken();
+      final response = await http.get(
+        Uri.parse('$baseUrl/users/$uid'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map) {
+          final profile = Map<String, dynamic>.from(data);
+          await cacheUserState(profile);
+          return profile;
+        }
+        return null;
+      }
+
+      if (response.statusCode == 404) return null;
+      throw Exception(_errorMessage(
+        response.body,
+        fallback: 'Failed to get user profile',
+      ));
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  static Future<void> cacheUserState(Map<String, dynamic> profile) async {
+    final prefs = await SharedPreferences.getInstance();
+    final role = '${profile['role'] ?? ''}'.trim();
+    if (role == 'user' || role == 'driver') {
+      await prefs.setString('selected_role', role);
+      await prefs.remove('role_sync_pending');
+    }
+
+    final name = '${profile['name'] ?? ''}'.trim();
+    final email = '${profile['email'] ?? ''}'.trim();
+    if (role == 'user') {
+      if (name.isNotEmpty) await prefs.setString('customer_name', name);
+      if (email.isNotEmpty) await prefs.setString('customer_email', email);
+      final customerProfile = profile['customer_profile'];
+      if (customerProfile is Map) {
+        final location = customerProfile['current_location'];
+        if (location is Map) {
+          await cacheLocation(
+            role: 'customer',
+            latitude: location['latitude'],
+            longitude: location['longitude'],
+          );
+        }
+      }
+    } else if (role == 'driver') {
+      if (name.isNotEmpty) await prefs.setString('driver_name', name);
+      final driverProfile = profile['driver_profile'];
+      if (driverProfile is Map) {
+        await cacheDriverProfile({
+          ...profile,
+          ...Map<String, dynamic>.from(driverProfile),
+        });
+      } else {
+        await cacheDriverProfile(profile);
+      }
+    }
+  }
+
+  static Future<String> resolveRouteAfterAuth() async {
+    final prefs = await SharedPreferences.getInstance();
+    final uid = prefs.getString('uid');
+    if (uid != null && uid.trim().isNotEmpty) {
+      try {
+        await getUserState(uid);
+      } catch (_) {
+        // Fall back to the last cached local state.
+      }
+    }
+
+    final role = prefs.getString('selected_role');
+    if (role == null || role.isEmpty) return '/role-selection';
+
+    if (role == 'user') {
+      final hasProfile = (prefs.getString('customer_name') ?? '').isNotEmpty;
+      return hasProfile ? '/customer-home' : '/customer-details';
+    }
+
+    final hasDriverProfile = (prefs.getString('driver_name') ?? '').isNotEmpty &&
+        (prefs.getString('driver_vehicle_number') ?? '').isNotEmpty;
+    if (hasDriverProfile) return '/dashboard';
+
+    final hasDriverLocation = prefs.getDouble('driver_latitude') != null &&
+        prefs.getDouble('driver_longitude') != null;
+    return hasDriverLocation ? '/driver-details' : '/location';
   }
 
   static Future<void> updateUserProfile(

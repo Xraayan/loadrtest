@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:loadr/constants.dart';
 import 'package:loadr/services/api_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class CustomerDetailsScreen extends StatefulWidget {
   const CustomerDetailsScreen({super.key});
@@ -16,96 +14,10 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
 
-  double? _latitude;
-  double? _longitude;
-  bool _isGettingLocation = false;
   bool _isSaving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCachedLocation();
-  }
-
-  Future<void> _loadCachedLocation() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      _latitude = prefs.getDouble('customer_latitude');
-      _longitude = prefs.getDouble('customer_longitude');
-    });
-  }
-
-  Future<Position> _determinePosition() async {
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      throw Exception('Please turn on location services and try again');
-    }
-
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-
-    if (permission == LocationPermission.denied) {
-      throw Exception('Location permission is required to continue');
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      throw Exception(
-        'Location permission is blocked. Enable it from app settings',
-      );
-    }
-
-    return Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-      ),
-    );
-  }
-
-  Future<void> _useCurrentLocation() async {
-    setState(() => _isGettingLocation = true);
-
-    try {
-      final position = await _determinePosition();
-      await ApiService.cacheLocation(
-        role: 'customer',
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
-      if (!mounted) return;
-      setState(() {
-        _latitude = position.latitude;
-        _longitude = position.longitude;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Location captured')),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isGettingLocation = false);
-      }
-    }
-  }
 
   Future<void> _saveDetails() async {
     if (!_formKey.currentState!.validate()) {
-      return;
-    }
-
-    final latitude = _latitude;
-    final longitude = _longitude;
-    if (latitude == null || longitude == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please allow location access')),
-      );
       return;
     }
 
@@ -121,10 +33,6 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
         uid,
         name: _nameController.text.trim(),
         email: _emailController.text.trim(),
-        currentLocation: {
-          'latitude': latitude,
-          'longitude': longitude,
-        },
       );
 
       if (!mounted) return;
@@ -148,11 +56,6 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final locationText = _latitude == null || _longitude == null
-        ? 'Location not added'
-        : '${_latitude!.toStringAsFixed(4)}, '
-            '${_longitude!.toStringAsFixed(4)}';
-
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -177,7 +80,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Add your contact details and location so drivers can quote accurately.',
+                'Add your contact details so we can personalize your booking experience.',
                 style: TextStyle(
                   color: Colors.black54,
                   fontSize: 15,
@@ -217,40 +120,6 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
                   }
                   return null;
                 },
-              ),
-              const SizedBox(height: 18),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF7F3),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFFFD7C7)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.my_location, color: kPrimaryOrange),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        locationText,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: _isGettingLocation ? null : _useCurrentLocation,
-                      child: _isGettingLocation
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Allow'),
-                    ),
-                  ],
-                ),
               ),
               const SizedBox(height: 34),
               SizedBox(

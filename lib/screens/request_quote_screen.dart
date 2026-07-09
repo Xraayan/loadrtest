@@ -179,8 +179,9 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
               ),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  urlTemplate: ApiService.mapTileUrlTemplate,
                   userAgentPackageName: 'com.loadr.app',
+                  tileSize: 512,
                   maxZoom: 19,
                 ),
                 PolylineLayer(
