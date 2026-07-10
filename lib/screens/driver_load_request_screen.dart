@@ -144,10 +144,6 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
     final drop = _placeFromJob(job, pickup: false);
     final pickupPoint = LatLng(pickup.latitude, pickup.longitude);
     final dropPoint = LatLng(drop.latitude, drop.longitude);
-    final center = LatLng(
-      (pickupPoint.latitude + dropPoint.latitude) / 2,
-      (pickupPoint.longitude + dropPoint.longitude) / 2,
-    );
     final routePoints =
         estimate.routePoints.isEmpty ? [pickupPoint, dropPoint] : estimate.routePoints;
 
@@ -159,8 +155,16 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
             child: FlutterMap(
               mapController: _mapController,
               options: MapOptions(
-                initialCenter: center,
-                initialZoom: _initialZoom(estimate.distanceKm),
+                initialCameraFit: CameraFit.coordinates(
+                  coordinates: routePoints,
+                  padding: EdgeInsets.fromLTRB(
+                    44,
+                    150,
+                    44,
+                    MediaQuery.sizeOf(context).height * 0.49,
+                  ),
+                  maxZoom: 15,
+                ),
                 minZoom: 4,
                 maxZoom: 18,
                 interactionOptions: const InteractionOptions(
@@ -173,7 +177,7 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
                 TileLayer(
                   urlTemplate: ApiService.mapTileUrlTemplate,
                   userAgentPackageName: 'com.loadr.app',
-                  tileSize: 512,
+                  panBuffer: 0,
                   maxZoom: 19,
                 ),
                 PolylineLayer(
@@ -255,14 +259,6 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
     final camera = _mapController.camera;
     final nextZoom = (camera.zoom + delta).clamp(4.0, 18.0).toDouble();
     _mapController.move(camera.center, nextZoom);
-  }
-
-  double _initialZoom(double distanceKm) {
-    if (distanceKm < 5) return 13.5;
-    if (distanceKm < 15) return 12;
-    if (distanceKm < 35) return 10.8;
-    if (distanceKm < 80) return 9.4;
-    return 8;
   }
 
   void _goBack() {

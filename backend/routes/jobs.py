@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from dependencies import CurrentUser, get_current_user, require_current_user_uid
 from role_profiles import get_role_profile
-from routes.quotes import LocationPoint, _haversine_km, _parse_location_metadata, _quote_for
+from routes.quotes import LocationPoint, _parse_location_metadata, _quote_for, _route_for
 from supabase_config import get_supabase
 
 router = APIRouter()
@@ -80,6 +80,21 @@ def _job_with_driver(job: dict) -> dict:
         driver_profile = get_role_profile("driver_profiles", "driver_uid", driver_uid)
         if driver_profile:
             driver.update(driver_profile)
+    except Exception:
+        pass
+
+    try:
+        location = (
+            get_supabase()
+            .table("driver_locations")
+            .select("latitude,longitude,is_active,updated_at")
+            .eq("driver_uid", driver_uid)
+            .maybe_single()
+            .execute()
+            .data
+        )
+        if location:
+            driver["current_location"] = location
     except Exception:
         pass
 
@@ -212,11 +227,12 @@ def create_job(
             latitude=float(request.dropoff_coords.get("latitude")),
             longitude=float(request.dropoff_coords.get("longitude")),
         )
-        distance_km = _haversine_km(pickup_point, drop_point)
+        distance_km, route_points = _route_for(pickup_point, drop_point)
         quote = _quote_for(request.vehicle_type, distance_km)
         metadata = _parse_location_metadata(pickup_point)
         data = {
             "id": str(uuid4()),
+            "customer_uid": request.customer_uid,
             "title": request.title,
             "pickup_location": request.pickup_location,
             "dropoff_location": request.dropoff_location,
@@ -227,6 +243,8 @@ def create_job(
             "district": metadata["district"],
             "vehicle_type": request.vehicle_type,
             "amount": quote["amount"],
+            "distance_km": distance_km,
+            "route_points": route_points,
             "status": "open",
             "created_at": now,
             "updated_at": now,
@@ -252,6 +270,30 @@ def get_active_driver_job(
     try:
         active = _active_assignment_for_driver(uid)
         return active or {"job": None, "trip": None}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/customer/{uid}/active")
+def get_active_customer_job(
+    uid: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Get the customer's latest open or assigned job."""
+    require_current_user_uid(uid, current_user)
+    try:
+        response = (
+            get_supabase()
+            .table("jobs")
+            .select("*")
+            .eq("customer_uid", uid)
+            .in_("status", ["open", "assigned", "accepted", "in_progress"])
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        jobs = response.data or []
+        return {"job": _job_with_driver(jobs[0]) if jobs else None}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 

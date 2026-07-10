@@ -475,6 +475,83 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>?> getCustomerActiveJob(String uid) async {
+    try {
+      final token = await getAuthToken();
+      final response = await http.get(
+        Uri.parse('$baseUrl/jobs/customer/$uid/active'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) {
+        throw Exception(_errorMessage(
+          response.body,
+          fallback: 'Failed to get active booking',
+        ));
+      }
+
+      final data = jsonDecode(response.body);
+      final job = data is Map ? data['job'] : null;
+      if (job is Map) {
+        final activeJob = Map<String, dynamic>.from(job);
+        await cacheCustomerActiveBooking(activeJob);
+        return activeJob;
+      }
+      await clearCustomerActiveBooking();
+      return null;
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getNearbyDrivers({
+    required double latitude,
+    required double longitude,
+  }) async {
+    try {
+      final token = await getAuthToken();
+      final uri = Uri.parse('$baseUrl/location/nearby').replace(
+        queryParameters: {
+          'latitude': '$latitude',
+          'longitude': '$longitude',
+          'radius_km': '8',
+        },
+      );
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) return [];
+      final data = jsonDecode(response.body);
+      if (data is! List) return [];
+      return data
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> cacheCustomerActiveBooking(
+    Map<String, dynamic> booking,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('active_booking', jsonEncode(booking));
+  }
+
+  static Future<void> clearCustomerActiveBooking() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('active_booking');
+  }
+
   static Future<List<PlaceSuggestion>> autocompletePlaces(String query) async {
     final trimmedQuery = query.trim();
     if (trimmedQuery.length < 3) return [];

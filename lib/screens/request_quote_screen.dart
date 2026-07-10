@@ -37,6 +37,27 @@ class RequestQuoteScreen extends StatefulWidget {
 class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
   final _mapController = MapController();
   bool _isPosting = false;
+  bool _loadedNearbyDrivers = false;
+  List<Map<String, dynamic>> _nearbyDrivers = [];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loadedNearbyDrivers) return;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is! RequestQuoteArgs) return;
+    _loadedNearbyDrivers = true;
+    _loadNearbyDrivers(args.pickup);
+  }
+
+  Future<void> _loadNearbyDrivers(PlaceSuggestion pickup) async {
+    final drivers = await ApiService.getNearbyDrivers(
+      latitude: pickup.latitude,
+      longitude: pickup.longitude,
+    );
+    if (!mounted) return;
+    setState(() => _nearbyDrivers = drivers);
+  }
 
   Future<void> _confirmRequest({
     required RequestQuoteArgs args,
@@ -154,11 +175,6 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
     final routePoints = routeArgs.estimate.routePoints.isEmpty
         ? [pickupPoint, dropPoint]
         : routeArgs.estimate.routePoints;
-    final center = LatLng(
-      (pickupPoint.latitude + dropPoint.latitude) / 2,
-      (pickupPoint.longitude + dropPoint.longitude) / 2,
-    );
-
     return Scaffold(
       backgroundColor: const Color(0xFFF8F8F8),
       body: Stack(
@@ -167,8 +183,16 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
             child: FlutterMap(
               mapController: _mapController,
               options: MapOptions(
-                initialCenter: center,
-                initialZoom: _initialZoom(distanceKm),
+                initialCameraFit: CameraFit.coordinates(
+                  coordinates: routePoints,
+                  padding: EdgeInsets.fromLTRB(
+                    44,
+                    150,
+                    44,
+                    MediaQuery.sizeOf(context).height * 0.47,
+                  ),
+                  maxZoom: 15,
+                ),
                 minZoom: 4,
                 maxZoom: 18,
                 interactionOptions: const InteractionOptions(
@@ -181,7 +205,7 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                 TileLayer(
                   urlTemplate: ApiService.mapTileUrlTemplate,
                   userAgentPackageName: 'com.loadr.app',
-                  tileSize: 512,
+                  panBuffer: 0,
                   maxZoom: 19,
                 ),
                 PolylineLayer(
@@ -217,6 +241,17 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                         foregroundColor: Colors.white,
                       ),
                     ),
+                    ..._nearbyDrivers
+                        .map(_driverPoint)
+                        .whereType<LatLng>()
+                        .map(
+                          (point) => Marker(
+                            point: point,
+                            width: 38,
+                            height: 38,
+                            child: const _NearbyDriverMarker(),
+                          ),
+                        ),
                   ],
                 ),
                 const RichAttributionWidget(
@@ -259,6 +294,7 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
               args: routeArgs,
               quote: quote,
               distanceKm: distanceKm,
+              nearbyDriverCount: _nearbyDrivers.length,
               onConfirm: () => _confirmRequest(args: routeArgs, quote: quote),
             ),
           ),
@@ -267,18 +303,22 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
     );
   }
 
-  double _initialZoom(double distanceKm) {
-    if (distanceKm < 5) return 13.5;
-    if (distanceKm < 15) return 12;
-    if (distanceKm < 35) return 10.8;
-    if (distanceKm < 80) return 9.4;
-    return 8;
-  }
-
   void _zoomBy(double delta) {
     final camera = _mapController.camera;
     final nextZoom = (camera.zoom + delta).clamp(4.0, 18.0).toDouble();
     _mapController.move(camera.center, nextZoom);
+  }
+
+  LatLng? _driverPoint(Map<String, dynamic> driver) {
+    final latitude = _toDouble(driver['latitude']);
+    final longitude = _toDouble(driver['longitude']);
+    if (latitude == 0 || longitude == 0) return null;
+    return LatLng(latitude, longitude);
+  }
+
+  double _toDouble(Object? value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse('${value ?? ''}') ?? 0;
   }
 
   static String _shortPlaceName(String value) {
@@ -415,12 +455,36 @@ class _RouteMarker extends StatelessWidget {
   }
 }
 
+class _NearbyDriverMarker extends StatelessWidget {
+  const _NearbyDriverMarker();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: kPrimaryOrange, width: 2),
+        boxShadow: const [
+          BoxShadow(color: Color(0x26000000), blurRadius: 10),
+        ],
+      ),
+      child: const Icon(
+        Icons.local_shipping,
+        color: kPrimaryOrange,
+        size: 19,
+      ),
+    );
+  }
+}
+
 class _ConfirmationPanel extends StatelessWidget {
   final bool posted;
   final bool posting;
   final RequestQuoteArgs args;
   final VehicleQuote quote;
   final double distanceKm;
+  final int nearbyDriverCount;
   final VoidCallback onConfirm;
 
   const _ConfirmationPanel({
@@ -429,6 +493,7 @@ class _ConfirmationPanel extends StatelessWidget {
     required this.args,
     required this.quote,
     required this.distanceKm,
+    required this.nearbyDriverCount,
     required this.onConfirm,
   });
 
@@ -470,6 +535,17 @@ class _ConfirmationPanel extends StatelessWidget {
                 fontWeight: FontWeight.w900,
               ),
             ),
+            if (nearbyDriverCount > 0) ...[
+              const SizedBox(height: 6),
+              Text(
+                '$nearbyDriverCount active ${nearbyDriverCount == 1 ? 'driver' : 'drivers'} near pickup',
+                style: const TextStyle(
+                  color: Color(0xFF2E7D32),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             _VehicleChoiceCard(
               vehicleType: args.vehicleType,

@@ -9,7 +9,6 @@ import 'package:loadr/models/place_suggestion.dart';
 import 'package:loadr/models/ride_quote.dart';
 import 'package:loadr/screens/request_quote_screen.dart';
 import 'package:loadr/services/api_service.dart';
-import 'package:loadr/services/location_search_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class RequestVehicleScreen extends StatefulWidget {
@@ -68,7 +67,7 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
 
     return Geolocator.getCurrentPosition(
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
+        accuracy: LocationAccuracy.bestForNavigation,
       ),
     );
   }
@@ -173,7 +172,7 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
     });
 
     try {
-      final places = await LocationSearchService.autocomplete(query);
+      final places = await ApiService.autocompletePlaces(query);
       if (!mounted || _currentQuery(isPickup) != query) return;
       setState(() {
         _locationSuggestions = places;
@@ -983,7 +982,7 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
     }
 
     try {
-      final place = await LocationSearchService.reverseGeocode(
+      final place = await ApiService.reverseGeocode(
         latitude: point.latitude,
         longitude: point.longitude,
       );
@@ -1186,7 +1185,7 @@ class _OsmMapPicker extends StatelessWidget {
                 TileLayer(
                   urlTemplate: ApiService.mapTileUrlTemplate,
                   userAgentPackageName: 'com.loadr.app',
-                  tileSize: 512,
+                  panBuffer: 0,
                   maxZoom: 19,
                 ),
                 const RichAttributionWidget(

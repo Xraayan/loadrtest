@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -20,6 +21,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
   Map<String, dynamic>? _booking;
   bool _isLoading = true;
   bool _isRefreshing = false;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
@@ -29,13 +31,33 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
 
   Future<void> _loadBooking() async {
     setState(() => _isLoading = true);
-    final booking = await _readLocalBooking();
+    var booking = await _readLocalBooking();
+    try {
+      final uid = await ApiService.getUid();
+      if (uid != null) {
+        final backendBooking = await ApiService.getCustomerActiveJob(uid);
+        if (backendBooking != null) {
+          booking = booking == null
+              ? backendBooking
+              : _mergeJobIntoBooking(booking, backendBooking);
+        } else {
+          booking = null;
+        }
+      }
+    } catch (_) {
+      // Cached booking remains usable while the backend is unavailable.
+    }
     if (!mounted) return;
     setState(() {
       _booking = booking;
       _isLoading = false;
     });
     await _refreshJobStatus(showErrors: false);
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 12),
+      (_) => _refreshJobStatus(showErrors: false),
+    );
   }
 
   Future<Map<String, dynamic>?> _readLocalBooking() async {
@@ -59,6 +81,15 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
     try {
       final job = await ApiService.getJob(jobId);
       final merged = _mergeJobIntoBooking(booking, job);
+      if (!_isAccepted(merged)) {
+        final pickup = _placeFromBooking(merged, 'pickup');
+        if (pickup != null) {
+          merged['nearby_drivers'] = await ApiService.getNearbyDrivers(
+            latitude: pickup.latitude,
+            longitude: pickup.longitude,
+          );
+        }
+      }
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('active_booking', jsonEncode(merged));
 
@@ -95,6 +126,9 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
       'dropoff_coords': job['dropoff_coords'] ?? booking['dropoff_coords'],
       'vehicle_type': job['vehicle_type'] ?? booking['vehicle_type'],
       'amount': job['amount'] ?? booking['amount'],
+      'distance_km': job['distance_km'] ?? booking['distance_km'],
+      'route_points': job['route_points'] ?? booking['route_points'],
+      'nearby_drivers': job['nearby_drivers'] ?? booking['nearby_drivers'],
       if (driver is Map) 'driver': Map<String, dynamic>.from(driver),
     };
   }
@@ -134,6 +168,8 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
               pickup: pickup,
               drop: drop,
               routePoints: _routePointsFromBooking(booking, pickup, drop),
+              driverPoint: _driverPointFromBooking(booking),
+              nearbyDrivers: _nearbyDriverPoints(booking),
               onZoomIn: () => _zoomBy(1),
               onZoomOut: () => _zoomBy(-1),
             )
@@ -173,6 +209,12 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
     final nextZoom = (camera.zoom + delta).clamp(4.0, 18.0).toDouble();
     _mapController.move(camera.center, nextZoom);
   }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
 }
 
 class _RouteMap extends StatelessWidget {
@@ -180,6 +222,8 @@ class _RouteMap extends StatelessWidget {
   final PlaceSuggestion pickup;
   final PlaceSuggestion drop;
   final List<LatLng> routePoints;
+  final LatLng? driverPoint;
+  final List<LatLng> nearbyDrivers;
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
 
@@ -188,6 +232,8 @@ class _RouteMap extends StatelessWidget {
     required this.pickup,
     required this.drop,
     required this.routePoints,
+    required this.driverPoint,
+    required this.nearbyDrivers,
     required this.onZoomIn,
     required this.onZoomOut,
   });
@@ -196,17 +242,23 @@ class _RouteMap extends StatelessWidget {
   Widget build(BuildContext context) {
     final pickupPoint = LatLng(pickup.latitude, pickup.longitude);
     final dropPoint = LatLng(drop.latitude, drop.longitude);
-    final center = LatLng(
-      (pickup.latitude + drop.latitude) / 2,
-      (pickup.longitude + drop.longitude) / 2,
-    );
+    final mapStart = driverPoint ?? pickupPoint;
+    final cameraPoints = [mapStart, ...routePoints, dropPoint];
     return Stack(
       children: [
         FlutterMap(
           mapController: controller,
           options: MapOptions(
-            initialCenter: center,
-            initialZoom: _initialZoom(pickupPoint, dropPoint),
+            initialCameraFit: CameraFit.coordinates(
+              coordinates: cameraPoints,
+              padding: EdgeInsets.fromLTRB(
+                44,
+                150,
+                44,
+                MediaQuery.sizeOf(context).height * 0.53,
+              ),
+              maxZoom: 15,
+            ),
             minZoom: 4,
             maxZoom: 18,
             interactionOptions: const InteractionOptions(
@@ -219,7 +271,7 @@ class _RouteMap extends StatelessWidget {
             TileLayer(
               urlTemplate: ApiService.mapTileUrlTemplate,
               userAgentPackageName: 'com.loadr.app',
-              tileSize: 512,
+              panBuffer: 0,
               maxZoom: 19,
             ),
             PolylineLayer(
@@ -255,6 +307,20 @@ class _RouteMap extends StatelessWidget {
                     foregroundColor: Colors.white,
                   ),
                 ),
+                for (final point in nearbyDrivers)
+                  Marker(
+                    point: point,
+                    width: 38,
+                    height: 38,
+                    child: const _DriverMapMarker(nearby: true),
+                  ),
+                if (driverPoint != null)
+                  Marker(
+                    point: driverPoint!,
+                    width: 44,
+                    height: 44,
+                    child: const _DriverMapMarker(),
+                  ),
               ],
             ),
             const RichAttributionWidget(
@@ -443,6 +509,7 @@ class _BookingPanel extends StatelessWidget {
                 _DriverCard(
                   name: driverName,
                   vehicleNumber: vehicleNumber,
+                  locationText: _driverLocationText(booking),
                 )
               else
                 const _WaitingDriverCard(),
@@ -494,10 +561,12 @@ class _BookingPanel extends StatelessWidget {
 class _DriverCard extends StatelessWidget {
   final String name;
   final String vehicleNumber;
+  final String locationText;
 
   const _DriverCard({
     required this.name,
     required this.vehicleNumber,
+    required this.locationText,
   });
 
   @override
@@ -543,6 +612,17 @@ class _DriverCard extends StatelessWidget {
                   style: const TextStyle(
                     color: Colors.black54,
                     fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  locationText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.black45,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
@@ -768,6 +848,31 @@ class _RouteMarker extends StatelessWidget {
   }
 }
 
+class _DriverMapMarker extends StatelessWidget {
+  final bool nearby;
+
+  const _DriverMapMarker({this.nearby = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: nearby ? Colors.white : kPrimaryOrange,
+        shape: BoxShape.circle,
+        border: Border.all(color: kPrimaryOrange, width: 2),
+        boxShadow: const [
+          BoxShadow(color: Color(0x26000000), blurRadius: 10),
+        ],
+      ),
+      child: Icon(
+        Icons.local_shipping,
+        color: nearby ? kPrimaryOrange : Colors.white,
+        size: nearby ? 19 : 22,
+      ),
+    );
+  }
+}
+
 class _MapZoomControls extends StatelessWidget {
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
@@ -886,14 +991,40 @@ List<LatLng> _routePointsFromBooking(
   ];
 }
 
-double _initialZoom(LatLng pickup, LatLng drop) {
+LatLng? _driverPointFromBooking(Map<String, dynamic> booking) {
+  final driver = booking['driver'];
+  final location = driver is Map ? driver['current_location'] : null;
+  if (location is! Map) return null;
+  final latitude = _asDouble(location['latitude']);
+  final longitude = _asDouble(location['longitude']);
+  if (latitude == 0 || longitude == 0) return null;
+  return LatLng(latitude, longitude);
+}
+
+List<LatLng> _nearbyDriverPoints(Map<String, dynamic> booking) {
+  final drivers = booking['nearby_drivers'];
+  if (drivers is! List) return [];
+  return drivers.whereType<Map>().map((driver) {
+    return LatLng(
+      _asDouble(driver['latitude']),
+      _asDouble(driver['longitude']),
+    );
+  }).where((point) {
+    return point.latitude != 0 && point.longitude != 0;
+  }).toList();
+}
+
+String _driverLocationText(Map<String, dynamic> booking) {
+  final driver = _driverPointFromBooking(booking);
+  final pickup = _placeFromBooking(booking, 'pickup');
+  if (driver == null || pickup == null) return 'Live location unavailable';
   const distance = Distance();
-  final km = distance.as(LengthUnit.Kilometer, pickup, drop);
-  if (km < 5) return 13.5;
-  if (km < 15) return 12;
-  if (km < 35) return 10.8;
-  if (km < 80) return 9.4;
-  return 8;
+  final km = distance.as(
+    LengthUnit.Kilometer,
+    driver,
+    LatLng(pickup.latitude, pickup.longitude),
+  );
+  return '${km.toStringAsFixed(1)} km from pickup - live on map';
 }
 
 double _asDouble(Object? value) {

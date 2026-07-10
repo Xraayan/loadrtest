@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:loadr/constants.dart';
+import 'package:loadr/services/api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
@@ -41,8 +42,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         }
         _activeBooking = activeBooking;
       });
+
+      final uid = prefs.getString('uid');
+      if (uid != null && uid.trim().isNotEmpty) {
+        final backendBooking = await ApiService.getCustomerActiveJob(uid);
+        if (!mounted) return;
+        setState(() => _activeBooking = backendBooking);
+      }
     } catch (_) {
-      // Keep the generic customer header if local data is unavailable.
+      // Keep cached dashboard data while the backend is unavailable.
     }
   }
 

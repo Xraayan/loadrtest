@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:loadr/constants.dart';
 import 'package:loadr/models/place_suggestion.dart';
@@ -17,6 +20,9 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
   final _mapController = MapController();
   Map<String, dynamic>? _job;
   RideEstimate? _estimate;
+  RideEstimate? _approachEstimate;
+  LatLng? _currentPoint;
+  StreamSubscription<Position>? _positionSubscription;
   bool _isLoading = true;
   String? _error;
 
@@ -41,13 +47,26 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
         throw Exception('User not authenticated');
       }
 
-      final job = initialJob ?? await ApiService.getDriverActiveJob(uid);
+      final backendJob = await ApiService.getDriverActiveJob(uid);
+      final job = backendJob ?? initialJob;
       if (job == null) {
         throw Exception('No active load found');
       }
 
       final pickup = _placeFromJob(job, pickup: true);
       final drop = _placeFromJob(job, pickup: false);
+      final currentPoint = await _currentDriverPoint(uid, pickup);
+      final currentPlace = PlaceSuggestion(
+        displayName: 'Your current location',
+        latitude: currentPoint.latitude,
+        longitude: currentPoint.longitude,
+      );
+      final approachEstimate = await ApiService.estimateRide(
+        pickup: currentPlace,
+        drop: pickup,
+        vehicleType: _text(job['vehicle_type'], fallback: 'Pickup'),
+        schedule: 'Now',
+      );
       final estimate = await ApiService.estimateRide(
         pickup: pickup,
         drop: drop,
@@ -59,8 +78,11 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
       setState(() {
         _job = job;
         _estimate = estimate;
+        _approachEstimate = approachEstimate;
+        _currentPoint = currentPoint;
         _isLoading = false;
       });
+      _startLocationUpdates(uid);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -80,7 +102,13 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
 
     final job = _job;
     final estimate = _estimate;
-    if (job == null || estimate == null || _error != null) {
+    final approachEstimate = _approachEstimate;
+    final currentPoint = _currentPoint;
+    if (job == null ||
+        estimate == null ||
+        approachEstimate == null ||
+        currentPoint == null ||
+        _error != null) {
       return Scaffold(
         backgroundColor: const Color(0xFFF7F7F7),
         appBar: AppBar(
@@ -111,13 +139,11 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
     final drop = _placeFromJob(job, pickup: false);
     final pickupPoint = LatLng(pickup.latitude, pickup.longitude);
     final dropPoint = LatLng(drop.latitude, drop.longitude);
-    final center = LatLng(
-      (pickupPoint.latitude + dropPoint.latitude) / 2,
-      (pickupPoint.longitude + dropPoint.longitude) / 2,
-    );
-    final routePoints =
+    final loadRoutePoints =
         estimate.routePoints.isEmpty ? [pickupPoint, dropPoint] : estimate.routePoints;
-
+    final approachRoutePoints = approachEstimate.routePoints.isEmpty
+        ? [currentPoint, pickupPoint]
+        : [currentPoint, ...approachEstimate.routePoints.skip(1)];
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F7),
       body: Stack(
@@ -126,8 +152,16 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
             child: FlutterMap(
               mapController: _mapController,
               options: MapOptions(
-                initialCenter: center,
-                initialZoom: _initialZoom(estimate.distanceKm),
+                initialCameraFit: CameraFit.coordinates(
+                  coordinates: [...approachRoutePoints, ...loadRoutePoints],
+                  padding: EdgeInsets.fromLTRB(
+                    44,
+                    150,
+                    44,
+                    MediaQuery.sizeOf(context).height * 0.52,
+                  ),
+                  maxZoom: 15,
+                ),
                 minZoom: 4,
                 maxZoom: 18,
                 interactionOptions: const InteractionOptions(
@@ -140,13 +174,20 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
                 TileLayer(
                   urlTemplate: ApiService.mapTileUrlTemplate,
                   userAgentPackageName: 'com.loadr.app',
-                  tileSize: 512,
+                  panBuffer: 0,
                   maxZoom: 19,
                 ),
                 PolylineLayer(
                   polylines: [
                     Polyline(
-                      points: routePoints,
+                      points: approachRoutePoints,
+                      color: const Color(0xFF333333),
+                      strokeWidth: 5,
+                      borderColor: Colors.white,
+                      borderStrokeWidth: 3,
+                    ),
+                    Polyline(
+                      points: loadRoutePoints,
                       color: kPrimaryOrange,
                       strokeWidth: 6,
                       borderColor: Colors.white,
@@ -156,6 +197,16 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
                 ),
                 MarkerLayer(
                   markers: [
+                    Marker(
+                      point: currentPoint,
+                      width: 46,
+                      height: 46,
+                      child: const _RouteMarker(
+                        icon: Icons.local_shipping,
+                        backgroundColor: kPrimaryOrange,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
                     Marker(
                       point: pickupPoint,
                       width: 46,
@@ -209,6 +260,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
             child: _TripPanel(
               job: job,
               estimate: estimate,
+              approachDistanceKm: approachEstimate.distanceKm,
               onRefresh: () => _loadTrip(null),
             ),
           ),
@@ -223,12 +275,58 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
     _mapController.move(camera.center, nextZoom);
   }
 
-  double _initialZoom(double distanceKm) {
-    if (distanceKm < 5) return 13.5;
-    if (distanceKm < 15) return 12;
-    if (distanceKm < 35) return 10.8;
-    if (distanceKm < 80) return 9.4;
-    return 8;
+  Future<LatLng> _currentDriverPoint(
+    String uid,
+    PlaceSuggestion pickup,
+  ) async {
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.bestForNavigation,
+        ),
+      );
+      await ApiService.updateLocation(uid, {
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'is_active': true,
+      });
+      return LatLng(position.latitude, position.longitude);
+    } catch (_) {
+      try {
+        final location = await ApiService.getDriverLocation(uid);
+        final latitude = _asDouble(location['latitude']);
+        final longitude = _asDouble(location['longitude']);
+        if (latitude != 0 && longitude != 0) {
+          return LatLng(latitude, longitude);
+        }
+      } catch (_) {}
+      return LatLng(pickup.latitude, pickup.longitude);
+    }
+  }
+
+  void _startLocationUpdates(String uid) {
+    if (_positionSubscription != null) return;
+    _positionSubscription = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 50,
+      ),
+    ).listen((position) async {
+      if (mounted) {
+        setState(() {
+          _currentPoint = LatLng(position.latitude, position.longitude);
+        });
+      }
+      try {
+        await ApiService.updateLocation(uid, {
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'is_active': true,
+        });
+      } catch (_) {
+        // The next movement update retries automatically.
+      }
+    }, onError: (_) {});
   }
 
   void _goBack(BuildContext context) {
@@ -238,16 +336,24 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
       Navigator.pushReplacementNamed(context, '/dashboard');
     }
   }
+
+  @override
+  void dispose() {
+    _positionSubscription?.cancel();
+    super.dispose();
+  }
 }
 
 class _TripPanel extends StatelessWidget {
   final Map<String, dynamic> job;
   final RideEstimate estimate;
+  final double approachDistanceKm;
   final VoidCallback onRefresh;
 
   const _TripPanel({
     required this.job,
     required this.estimate,
+    required this.approachDistanceKm,
     required this.onRefresh,
   });
 
@@ -320,8 +426,17 @@ class _TripPanel extends StatelessWidget {
                         label: vehicleType,
                       ),
                       _InfoChip(
+                        icon: Icons.near_me_outlined,
+                        label: '${approachDistanceKm.toStringAsFixed(1)} km to pickup',
+                      ),
+                      _InfoChip(
                         icon: Icons.route,
-                        label: '${estimate.distanceKm.toStringAsFixed(1)} km',
+                        label: '${estimate.distanceKm.toStringAsFixed(1)} km load trip',
+                      ),
+                      _InfoChip(
+                        icon: Icons.straighten,
+                        label:
+                            '${(approachDistanceKm + estimate.distanceKm).toStringAsFixed(1)} km total',
                       ),
                     ],
                   ),

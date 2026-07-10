@@ -36,7 +36,7 @@ class _LocationScreenState extends State<LocationScreen> {
 
     return Geolocator.getCurrentPosition(
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
+        accuracy: LocationAccuracy.bestForNavigation,
       ),
     );
   }

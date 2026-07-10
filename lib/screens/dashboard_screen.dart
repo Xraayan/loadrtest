@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:loadr/constants.dart';
 import 'package:loadr/services/api_service.dart';
 import 'package:loadr/widgets/bottom_nav.dart';
@@ -17,6 +18,7 @@ class DashboardScreen extends StatefulWidget {
 
 class DashboardScreenState extends State<DashboardScreen> {
   Timer? _statusTimer;
+  StreamSubscription<Position>? _locationSubscription;
   bool _isOnline = true;
   String? _uid;
   String _driverName = 'Driver';
@@ -38,6 +40,7 @@ class DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     _statusTimer?.cancel();
+    _locationSubscription?.cancel();
     super.dispose();
   }
 
@@ -69,6 +72,7 @@ class DashboardScreenState extends State<DashboardScreen> {
               ? '${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)}'
               : 'Kottayam, Kerala');
     });
+    _syncLocationTracking();
     _syncDriverDataFromBackend();
   }
 
@@ -78,6 +82,7 @@ class DashboardScreenState extends State<DashboardScreen> {
     await prefs.setBool('driver_is_active', value);
     if (!mounted) return;
     setState(() => _isOnline = value);
+    _syncLocationTracking();
     final uid = _uid ?? prefs.getString('uid');
     if (uid == null) return;
 
@@ -87,6 +92,7 @@ class DashboardScreenState extends State<DashboardScreen> {
       await prefs.setBool('driver_is_active', previous);
       if (!mounted) return;
       setState(() => _isOnline = previous);
+      _syncLocationTracking();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Status update failed: $e')),
       );
@@ -105,6 +111,7 @@ class DashboardScreenState extends State<DashboardScreen> {
           _uid = uid;
           _isOnline = active;
         });
+        _syncLocationTracking();
       }
     } catch (_) {
       // Keep cached status if realtime location is temporarily unavailable.
@@ -132,6 +139,33 @@ class DashboardScreenState extends State<DashboardScreen> {
     } else if (mounted) {
       setState(() => _openLoadCount = null);
     }
+  }
+
+  void _syncLocationTracking() {
+    final uid = _uid;
+    if (!_isOnline || uid == null) {
+      _locationSubscription?.cancel();
+      _locationSubscription = null;
+      return;
+    }
+    if (_locationSubscription != null) return;
+
+    _locationSubscription = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 100,
+      ),
+    ).listen((position) async {
+      try {
+        await ApiService.updateLocation(uid, {
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'is_active': true,
+        });
+      } catch (_) {
+        // The next movement update retries automatically.
+      }
+    }, onError: (_) {});
   }
 
   @override

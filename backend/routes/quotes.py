@@ -1,10 +1,14 @@
+import json
 from math import atan2, cos, pi, pow, sin, sqrt
 from typing import Optional
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from dependencies import CurrentUser, get_current_user
+from config import settings
 
 router = APIRouter()
 
@@ -145,91 +149,50 @@ def _parse_location_metadata(place: LocationPoint) -> dict:
     }
 
 
-def _astar_route(pickup: LocationPoint, drop: LocationPoint, grid_size: int = 28) -> list[dict]:
-    start = (0, 0)
-    goal = (grid_size - 1, grid_size - 1)
-    came_from: dict[tuple[int, int], tuple[int, int]] = {}
-    g_score = {start: 0.0}
-    open_set = [start]
+def _route_for(pickup: LocationPoint, drop: LocationPoint) -> tuple[float, list[dict]]:
+    fallback = (
+        _haversine_km(pickup, drop),
+        [
+            {"latitude": pickup.latitude, "longitude": pickup.longitude},
+            {"latitude": drop.latitude, "longitude": drop.longitude},
+        ],
+    )
+    api_key = (settings.geoapify_api_key or "").strip()
+    if not api_key:
+        return fallback
 
-    while open_set:
-        open_set.sort(key=lambda node: g_score.get(node, float("inf")) + _heuristic(node, goal))
-        current = open_set.pop(0)
-        if current == goal:
-            return _nodes_to_points(_reconstruct_path(came_from, current), pickup, drop, grid_size)
-
-        for next_node in _neighbors(current, grid_size):
-            move_cost = 1.0 if next_node[0] == current[0] or next_node[1] == current[1] else 1.35
-            tentative_score = g_score.get(current, float("inf")) + move_cost
-            if tentative_score >= g_score.get(next_node, float("inf")):
-                continue
-            came_from[next_node] = current
-            g_score[next_node] = tentative_score
-            if next_node not in open_set:
-                open_set.append(next_node)
-
-    return [
-        {"latitude": pickup.latitude, "longitude": pickup.longitude},
-        {"latitude": drop.latitude, "longitude": drop.longitude},
-    ]
-
-
-def _neighbors(node: tuple[int, int], grid_size: int) -> list[tuple[int, int]]:
-    neighbors = []
-    for dx in range(-1, 2):
-        for dy in range(-1, 2):
-            if dx == 0 and dy == 0:
-                continue
-            x = node[0] + dx
-            y = node[1] + dy
-            if x < 0 or y < 0 or x >= grid_size or y >= grid_size:
-                continue
-            neighbors.append((x, y))
-    return neighbors
-
-
-def _heuristic(a: tuple[int, int], b: tuple[int, int]) -> float:
-    return sqrt(pow(a[0] - b[0], 2) + pow(a[1] - b[1], 2))
-
-
-def _reconstruct_path(
-    came_from: dict[tuple[int, int], tuple[int, int]],
-    current: tuple[int, int],
-) -> list[tuple[int, int]]:
-    path = [current]
-    while current in came_from:
-        current = came_from[current]
-        path.append(current)
-    path.reverse()
-    return path
-
-
-def _nodes_to_points(
-    nodes: list[tuple[int, int]],
-    pickup: LocationPoint,
-    drop: LocationPoint,
-    grid_size: int,
-) -> list[dict]:
-    points = []
-    for node in nodes:
-        progress = node[0] / (grid_size - 1)
-        cross_progress = node[1] / (grid_size - 1)
-        curve = sin(progress * pi) * 0.12
-        latitude = _lerp(pickup.latitude, drop.latitude, progress)
-        longitude = _lerp(pickup.longitude, drop.longitude, cross_progress)
-        perpendicular_lat = (drop.longitude - pickup.longitude) * curve
-        perpendicular_lng = (pickup.latitude - drop.latitude) * curve
-        points.append(
-            {
-                "latitude": latitude + perpendicular_lat,
-                "longitude": longitude + perpendicular_lng,
-            }
-        )
-    return points
-
-
-def _lerp(start: float, end: float, progress: float) -> float:
-    return start + ((end - start) * progress)
+    query = urlencode(
+        {
+            "waypoints": (
+                f"{pickup.latitude},{pickup.longitude}|"
+                f"{drop.latitude},{drop.longitude}"
+            ),
+            "mode": "light_truck",
+            "type": "balanced",
+            "apiKey": api_key,
+        }
+    )
+    request = Request(
+        f"https://api.geoapify.com/v1/routing?{query}",
+        headers={"User-Agent": "LoadR Backend"},
+    )
+    try:
+        with urlopen(request, timeout=8) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        feature = (payload.get("features") or [])[0]
+        lines = feature.get("geometry", {}).get("coordinates") or []
+        points = [
+            {"latitude": pair[1], "longitude": pair[0]}
+            for line in lines
+            for pair in line
+            if isinstance(pair, list) and len(pair) >= 2
+        ]
+        distance_m = float(feature.get("properties", {}).get("distance") or 0)
+        if len(points) < 2 or distance_m <= 0:
+            return fallback
+        return distance_m / 1000, points
+    except Exception:
+        return fallback
 
 
 @router.post("/estimate")
@@ -239,7 +202,7 @@ def estimate_quote(
 ):
     """Estimate route distance and vehicle pricing on the trusted backend."""
     try:
-        distance_km = _haversine_km(request.pickup, request.drop)
+        distance_km, route_points = _route_for(request.pickup, request.drop)
         quotes = [_quote_for(vehicle_type, distance_km) for vehicle_type in VEHICLE_RATES]
         selected_quote = next(
             (quote for quote in quotes if quote["vehicle_type"] == request.vehicle_type),
@@ -249,7 +212,7 @@ def estimate_quote(
         suggested_vehicle_type = _suggest_vehicle_type(distance_km)
         return {
             "distance_km": distance_km,
-            "route_points": _astar_route(request.pickup, request.drop),
+            "route_points": route_points,
             "selected_quote": selected_quote,
             "vehicle_quotes": quotes,
             "pickup_metadata": _parse_location_metadata(request.pickup),
