@@ -8,6 +8,7 @@ import 'package:loadr/constants.dart';
 import 'package:loadr/models/place_suggestion.dart';
 import 'package:loadr/models/ride_quote.dart';
 import 'package:loadr/services/api_service.dart';
+import 'package:loadr/widgets/skeleton.dart';
 
 class DriverActiveTripScreen extends StatefulWidget {
   const DriverActiveTripScreen({super.key});
@@ -24,6 +25,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
   LatLng? _currentPoint;
   StreamSubscription<Position>? _positionSubscription;
   bool _isLoading = true;
+  bool _isUpdatingStatus = false;
   String? _error;
 
   @override
@@ -55,24 +57,32 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
 
       final pickup = _placeFromJob(job, pickup: true);
       final drop = _placeFromJob(job, pickup: false);
+      final pickedUp = _isPickedUp(job);
       final currentPoint = await _currentDriverPoint(uid, pickup);
       final currentPlace = PlaceSuggestion(
         displayName: 'Your current location',
         latitude: currentPoint.latitude,
         longitude: currentPoint.longitude,
       );
-      final approachEstimate = await ApiService.estimateRide(
+      final approachFuture = ApiService.estimateRide(
         pickup: currentPlace,
-        drop: pickup,
-        vehicleType: _text(job['vehicle_type'], fallback: 'Pickup'),
+        drop: pickedUp ? drop : pickup,
+        vehicleType: _text(job['vehicle_type'], fallback: 'Tata Ace'),
         schedule: 'Now',
       );
-      final estimate = await ApiService.estimateRide(
-        pickup: pickup,
-        drop: drop,
-        vehicleType: _text(job['vehicle_type'], fallback: 'Pickup'),
-        schedule: 'Now',
-      );
+      final estimates = pickedUp
+          ? [await approachFuture]
+          : await Future.wait([
+              approachFuture,
+              ApiService.estimateRide(
+                pickup: pickup,
+                drop: drop,
+                vehicleType: _text(job['vehicle_type'], fallback: 'Tata Ace'),
+                schedule: 'Now',
+              ),
+            ]);
+      final approachEstimate = estimates.first;
+      final estimate = pickedUp ? approachEstimate : estimates.last;
 
       if (!mounted) return;
       setState(() {
@@ -95,9 +105,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator(color: kPrimaryOrange)),
-      );
+      return const MapScreenSkeleton();
     }
 
     final job = _job;
@@ -139,11 +147,24 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
     final drop = _placeFromJob(job, pickup: false);
     final pickupPoint = LatLng(pickup.latitude, pickup.longitude);
     final dropPoint = LatLng(drop.latitude, drop.longitude);
-    final loadRoutePoints =
-        estimate.routePoints.isEmpty ? [pickupPoint, dropPoint] : estimate.routePoints;
+    final pickedUp = _isPickedUp(job);
+    final loadRoutePoints = estimate.routePoints.isEmpty
+        ? [pickedUp ? currentPoint : pickupPoint, dropPoint]
+        : estimate.routePoints;
     final approachRoutePoints = approachEstimate.routePoints.isEmpty
-        ? [currentPoint, pickupPoint]
+        ? [currentPoint, pickedUp ? dropPoint : pickupPoint]
         : [currentPoint, ...approachEstimate.routePoints.skip(1)];
+    final activeRoutePoints = pickedUp ? loadRoutePoints : approachRoutePoints;
+    final cameraPoints = pickedUp
+        ? activeRoutePoints
+        : [...approachRoutePoints, ...loadRoutePoints];
+    final distanceToPickupKm = _distanceKm(currentPoint, pickupPoint);
+    final distanceToDropKm = _distanceKm(currentPoint, dropPoint);
+    final canConfirmPickup = !pickedUp &&
+        (distanceToPickupKm <= _pickupConfirmRadiusKm ||
+            _text(job['status']).toLowerCase() == 'arriving');
+    final canConfirmDropoff =
+        pickedUp && distanceToDropKm <= _dropoffConfirmRadiusKm;
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F7),
       body: Stack(
@@ -153,7 +174,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
               mapController: _mapController,
               options: MapOptions(
                 initialCameraFit: CameraFit.coordinates(
-                  coordinates: [...approachRoutePoints, ...loadRoutePoints],
+                  coordinates: cameraPoints,
                   padding: EdgeInsets.fromLTRB(
                     44,
                     150,
@@ -163,7 +184,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
                   maxZoom: 15,
                 ),
                 minZoom: 4,
-                maxZoom: 18,
+                maxZoom: 20,
                 interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.drag |
                       InteractiveFlag.pinchZoom |
@@ -173,21 +194,24 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
               children: [
                 TileLayer(
                   urlTemplate: ApiService.mapTileUrlTemplate,
-                  userAgentPackageName: 'com.loadr.app',
+                  retinaMode: false,
+                  userAgentPackageName: 'com.example.loadr',
                   panBuffer: 0,
-                  maxZoom: 19,
+                  maxNativeZoom: 20,
+                  maxZoom: 20,
                 ),
                 PolylineLayer(
                   polylines: [
+                    if (!pickedUp)
+                      Polyline(
+                        points: approachRoutePoints,
+                        color: const Color(0xFF333333),
+                        strokeWidth: 5,
+                        borderColor: Colors.white,
+                        borderStrokeWidth: 3,
+                      ),
                     Polyline(
-                      points: approachRoutePoints,
-                      color: const Color(0xFF333333),
-                      strokeWidth: 5,
-                      borderColor: Colors.white,
-                      borderStrokeWidth: 3,
-                    ),
-                    Polyline(
-                      points: loadRoutePoints,
+                      points: pickedUp ? activeRoutePoints : loadRoutePoints,
                       color: kPrimaryOrange,
                       strokeWidth: 6,
                       borderColor: Colors.white,
@@ -207,16 +231,17 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
                         foregroundColor: Colors.white,
                       ),
                     ),
-                    Marker(
-                      point: pickupPoint,
-                      width: 46,
-                      height: 46,
-                      child: const _RouteMarker(
-                        icon: Icons.trip_origin,
-                        backgroundColor: Colors.white,
-                        foregroundColor: kPrimaryOrange,
+                    if (!pickedUp)
+                      Marker(
+                        point: pickupPoint,
+                        width: 46,
+                        height: 46,
+                        child: const _RouteMarker(
+                          icon: Icons.trip_origin,
+                          backgroundColor: Colors.white,
+                          foregroundColor: kPrimaryOrange,
+                        ),
                       ),
-                    ),
                     Marker(
                       point: dropPoint,
                       width: 46,
@@ -231,7 +256,9 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
                 ),
                 const RichAttributionWidget(
                   attributions: [
-                    TextSourceAttribution('OpenStreetMap contributors'),
+                    TextSourceAttribution(
+                      'Geoapify | OpenStreetMap contributors',
+                    ),
                   ],
                 ),
               ],
@@ -260,7 +287,14 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
             child: _TripPanel(
               job: job,
               estimate: estimate,
-              approachDistanceKm: approachEstimate.distanceKm,
+              distanceToNextKm:
+                  pickedUp ? estimate.distanceKm : approachEstimate.distanceKm,
+              pickedUp: pickedUp,
+              canConfirmPickup: canConfirmPickup,
+              canConfirmDropoff: canConfirmDropoff,
+              isUpdatingStatus: _isUpdatingStatus,
+              onConfirmPickup: _confirmPickup,
+              onConfirmDropoff: _confirmDropoff,
               onRefresh: () => _loadTrip(null),
             ),
           ),
@@ -312,9 +346,18 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
         distanceFilter: 50,
       ),
     ).listen((position) async {
+      final point = LatLng(position.latitude, position.longitude);
       if (mounted) {
+        final job = _job;
         setState(() {
-          _currentPoint = LatLng(position.latitude, position.longitude);
+          _currentPoint = point;
+          if (job != null && !_isPickedUp(job)) {
+            final pickup = _placeFromJob(job, pickup: true);
+            final pickupPoint = LatLng(pickup.latitude, pickup.longitude);
+            if (_distanceKm(point, pickupPoint) <= _pickupConfirmRadiusKm) {
+              _job = {...job, 'status': 'arriving'};
+            }
+          }
         });
       }
       try {
@@ -327,6 +370,73 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
         // The next movement update retries automatically.
       }
     }, onError: (_) {});
+  }
+
+  Future<void> _confirmPickup() async {
+    final job = _job;
+    if (job == null) return;
+
+    final tripId =
+        _text(job['trip_id'], fallback: _text(job['assigned_trip_id']));
+    if (tripId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Trip ID is missing')),
+      );
+      return;
+    }
+
+    setState(() => _isUpdatingStatus = true);
+    try {
+      await ApiService.updateTripStatus(tripId, 'in_progress');
+      final updatedJob = {...job, 'status': 'in_progress', 'trip_id': tripId};
+      await ApiService.cacheDriverActiveJob(updatedJob);
+      if (!mounted) return;
+      setState(() => _job = updatedJob);
+      await _loadTrip(updatedJob);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Pickup update failed: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isUpdatingStatus = false);
+      }
+    }
+  }
+
+  Future<void> _confirmDropoff() async {
+    final job = _job;
+    if (job == null) return;
+
+    final tripId =
+        _text(job['trip_id'], fallback: _text(job['assigned_trip_id']));
+    if (tripId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Trip ID is missing')),
+      );
+      return;
+    }
+
+    setState(() => _isUpdatingStatus = true);
+    try {
+      await ApiService.updateTripStatus(tripId, 'completed');
+      await ApiService.clearDriverActiveJob();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Trip completed')),
+      );
+      Navigator.pushReplacementNamed(context, '/dashboard');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Drop-off update failed: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isUpdatingStatus = false);
+      }
+    }
   }
 
   void _goBack(BuildContext context) {
@@ -347,13 +457,25 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
 class _TripPanel extends StatelessWidget {
   final Map<String, dynamic> job;
   final RideEstimate estimate;
-  final double approachDistanceKm;
+  final double distanceToNextKm;
+  final bool pickedUp;
+  final bool canConfirmPickup;
+  final bool canConfirmDropoff;
+  final bool isUpdatingStatus;
+  final VoidCallback onConfirmPickup;
+  final VoidCallback onConfirmDropoff;
   final VoidCallback onRefresh;
 
   const _TripPanel({
     required this.job,
     required this.estimate,
-    required this.approachDistanceKm,
+    required this.distanceToNextKm,
+    required this.pickedUp,
+    required this.canConfirmPickup,
+    required this.canConfirmDropoff,
+    required this.isUpdatingStatus,
+    required this.onConfirmPickup,
+    required this.onConfirmDropoff,
     required this.onRefresh,
   });
 
@@ -398,10 +520,10 @@ class _TripPanel extends StatelessWidget {
             const SizedBox(height: 18),
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Accepted load',
-                    style: TextStyle(
+                    pickedUp ? 'On the way to drop-off' : 'Accepted load',
+                    style: const TextStyle(
                       color: Colors.black87,
                       fontSize: 24,
                       fontWeight: FontWeight.w900,
@@ -427,17 +549,20 @@ class _TripPanel extends StatelessWidget {
                       ),
                       _InfoChip(
                         icon: Icons.near_me_outlined,
-                        label: '${approachDistanceKm.toStringAsFixed(1)} km to pickup',
+                        label:
+                            '${distanceToNextKm.toStringAsFixed(1)} km to ${pickedUp ? 'drop' : 'pickup'}',
                       ),
                       _InfoChip(
                         icon: Icons.route,
-                        label: '${estimate.distanceKm.toStringAsFixed(1)} km load trip',
-                      ),
-                      _InfoChip(
-                        icon: Icons.straighten,
                         label:
-                            '${(approachDistanceKm + estimate.distanceKm).toStringAsFixed(1)} km total',
+                            '${estimate.distanceKm.toStringAsFixed(1)} km load trip',
                       ),
+                      if (!pickedUp)
+                        _InfoChip(
+                          icon: Icons.straighten,
+                          label:
+                              '${(distanceToNextKm + estimate.distanceKm).toStringAsFixed(1)} km total',
+                        ),
                     ],
                   ),
                 ),
@@ -457,7 +582,15 @@ class _TripPanel extends StatelessWidget {
               width: double.infinity,
               height: 52,
               child: ElevatedButton.icon(
-                onPressed: onRefresh,
+                onPressed: isUpdatingStatus
+                    ? null
+                    : pickedUp
+                        ? canConfirmDropoff
+                            ? onConfirmDropoff
+                            : onRefresh
+                        : canConfirmPickup
+                            ? onConfirmPickup
+                            : onRefresh,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: kPrimaryOrange,
                   foregroundColor: Colors.white,
@@ -466,10 +599,26 @@ class _TripPanel extends StatelessWidget {
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                icon: const Icon(Icons.refresh),
-                label: const Text(
-                  'Refresh trip',
-                  style: TextStyle(fontWeight: FontWeight.w900),
+                icon: Icon(
+                  pickedUp
+                      ? canConfirmDropoff
+                          ? Icons.flag_outlined
+                          : Icons.near_me_outlined
+                      : canConfirmPickup
+                          ? Icons.inventory_2_outlined
+                          : Icons.near_me_outlined,
+                ),
+                label: Text(
+                  isUpdatingStatus
+                      ? 'Updating...'
+                      : pickedUp
+                          ? canConfirmDropoff
+                              ? 'Confirm drop-off'
+                              : 'Refresh drop-off route'
+                          : canConfirmPickup
+                              ? 'Confirm pickup'
+                              : 'Refresh pickup route',
+                  style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
               ),
             ),
@@ -740,7 +889,8 @@ class _MapZoomControls extends StatelessWidget {
   }
 }
 
-PlaceSuggestion _placeFromJob(Map<String, dynamic> job, {required bool pickup}) {
+PlaceSuggestion _placeFromJob(Map<String, dynamic> job,
+    {required bool pickup}) {
   final prefix = pickup ? 'pickup' : 'dropoff';
   final coords = job['${prefix}_coords'];
   if (coords is! Map) {
@@ -755,6 +905,23 @@ PlaceSuggestion _placeFromJob(Map<String, dynamic> job, {required bool pickup}) 
     district: _text(job['district']),
     state: _text(job['state']),
   );
+}
+
+const _pickupConfirmRadiusKm = 0.5;
+const _dropoffConfirmRadiusKm = 0.5;
+
+bool _isPickedUp(Map<String, dynamic> job) {
+  final status = _text(job['status']).toLowerCase();
+  return status == 'in_progress' ||
+      status == 'started' ||
+      status == 'pickup' ||
+      status == 'loaded' ||
+      status == 'completed';
+}
+
+double _distanceKm(LatLng from, LatLng to) {
+  const distance = Distance();
+  return distance.as(LengthUnit.Kilometer, from, to);
 }
 
 double _asDouble(Object? value) {

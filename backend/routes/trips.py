@@ -97,10 +97,11 @@ def get_trip(trip_id: str):
 def update_trip_status(trip_id: str, status: str):
     """Update trip status."""
     try:
+        now = _now()
         response = (
             get_supabase()
             .table("trips")
-            .update({"status": status, "updated_at": _now()})
+            .update({"status": status, "updated_at": now})
             .eq("id", trip_id)
             .execute()
         )
@@ -109,7 +110,39 @@ def update_trip_status(trip_id: str, status: str):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Trip not found",
             )
-        return {"message": "Trip status updated", "trip": _format_trip(response.data[0])}
+        trip = response.data[0]
+        job_id = trip.get("job_id")
+        if job_id:
+            get_supabase().table("jobs").update(
+                {"status": status, "updated_at": now}
+            ).eq("id", job_id).execute()
+            if status == "completed":
+                try:
+                    job = (
+                        get_supabase()
+                        .table("jobs")
+                        .select("customer_uid,title")
+                        .eq("id", job_id)
+                        .maybe_single()
+                        .execute()
+                        .data
+                    )
+                    customer_uid = (job or {}).get("customer_uid")
+                    if customer_uid:
+                        get_supabase().table("notifications").insert(
+                            {
+                                "user_uid": customer_uid,
+                                "title": "Trip completed",
+                                "message": "Your load has reached the drop-off location.",
+                                "type": "trip",
+                                "read": False,
+                                "created_at": now,
+                            }
+                        ).execute()
+                except Exception:
+                    pass
+
+        return {"message": "Trip status updated", "trip": _format_trip(trip)}
     except HTTPException:
         raise
     except Exception as e:

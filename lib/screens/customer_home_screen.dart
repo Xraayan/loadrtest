@@ -560,10 +560,18 @@ String _shortLocation(String value) {
 }
 
 String _bookingTileSubtitle(Map<String, dynamic> booking) {
+  final status = '${booking['status'] ?? ''}'.trim().toLowerCase();
+  if (status == 'arriving') return 'Driver reaching pickup';
+  if (status == 'in_progress') return 'Pickup confirmed';
+  if (status == 'completed') return 'Trip completed';
   return _bookingAccepted(booking) ? 'Driver accepted' : '1 open move';
 }
 
 String _bookingStatusLabel(Map<String, dynamic> booking) {
+  final status = '${booking['status'] ?? ''}'.trim().toLowerCase();
+  if (status == 'arriving') return 'Arriving';
+  if (status == 'in_progress') return 'On trip';
+  if (status == 'completed') return 'Done';
   return _bookingAccepted(booking) ? 'Accepted' : 'Open';
 }
 
@@ -571,5 +579,8 @@ bool _bookingAccepted(Map<String, dynamic> booking) {
   final status = '${booking['status'] ?? ''}'.trim().toLowerCase();
   return status == 'assigned' ||
       status == 'accepted' ||
+      status == 'arriving' ||
+      status == 'in_progress' ||
+      status == 'completed' ||
       '${booking['assigned_driver_uid'] ?? ''}'.trim().isNotEmpty;
 }

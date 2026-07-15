@@ -22,7 +22,36 @@ class ApiService {
   }
 
   static String get mapTileUrlTemplate {
-    return '$baseUrl/map/tiles/{z}/{x}/{y}.png';
+    return '$baseUrl/map/geoapify/osm-bright-smooth/{z}/{x}/{y}{r}.png';
+  }
+
+  static Future<Object?> _readJsonCache(String key, Duration maxAge) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(key);
+    if (raw == null || raw.trim().isEmpty) return null;
+
+    try {
+      final wrapper = jsonDecode(raw);
+      if (wrapper is! Map) return null;
+      final savedAt = DateTime.tryParse('${wrapper['saved_at'] ?? ''}');
+      if (savedAt == null || DateTime.now().difference(savedAt) > maxAge) {
+        return null;
+      }
+      return wrapper['value'];
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> _writeJsonCache(String key, Object value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      key,
+      jsonEncode({
+        'saved_at': DateTime.now().toIso8601String(),
+        'value': value,
+      }),
+    );
   }
 
   // Sign in with phone number
@@ -196,8 +225,9 @@ class ApiService {
       return hasProfile ? '/customer-home' : '/customer-details';
     }
 
-    final hasDriverProfile = (prefs.getString('driver_name') ?? '').isNotEmpty &&
-        (prefs.getString('driver_vehicle_number') ?? '').isNotEmpty;
+    final hasDriverProfile =
+        (prefs.getString('driver_name') ?? '').isNotEmpty &&
+            (prefs.getString('driver_vehicle_number') ?? '').isNotEmpty;
     if (hasDriverProfile) return '/dashboard';
 
     final hasDriverLocation = prefs.getDouble('driver_latitude') != null &&
@@ -398,6 +428,11 @@ class ApiService {
     String? district,
     String? vehicleType,
   }) async {
+    final cacheKey = 'jobs_${state ?? ''}_${city ?? ''}_${district ?? ''}_'
+        '${vehicleType ?? ''}';
+    final cached = await _readJsonCache(cacheKey, const Duration(seconds: 20));
+    if (cached is List) return cached;
+
     try {
       final token = await getAuthToken();
       final query = <String, String>{
@@ -418,11 +453,18 @@ class ApiService {
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final data = jsonDecode(response.body);
+        if (data is List) {
+          await _writeJsonCache(cacheKey, data);
+          return data;
+        }
+        return [];
       } else {
         throw Exception('Failed to get jobs: ${response.body}');
       }
     } catch (e) {
+      final stale = await _readJsonCache(cacheKey, const Duration(days: 7));
+      if (stale is List) return stale;
       throw Exception('Error: $e');
     }
   }
@@ -475,6 +517,30 @@ class ApiService {
     }
   }
 
+  static Future<void> cancelJob(String jobId) async {
+    try {
+      final token = await getAuthToken();
+      final response = await http.patch(
+        Uri.parse('$baseUrl/jobs/$jobId/cancel'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        await clearCustomerActiveBooking();
+        return;
+      }
+      throw Exception(_errorMessage(
+        response.body,
+        fallback: 'Failed to cancel pickup',
+      ));
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
   static Future<Map<String, dynamic>?> getCustomerActiveJob(String uid) async {
     try {
       final token = await getAuthToken();
@@ -504,6 +570,51 @@ class ApiService {
       return null;
     } catch (e) {
       throw Exception('Error: $e');
+    }
+  }
+
+  static Stream<Map<String, dynamic>?> streamCustomerActiveJob(
+    String uid,
+  ) async* {
+    final client = http.Client();
+    try {
+      final token = await getAuthToken();
+      final request = http.Request(
+        'GET',
+        Uri.parse('$baseUrl/jobs/customer/$uid/active/stream'),
+      );
+      request.headers.addAll({
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      });
+
+      final response = await client.send(request).timeout(
+            const Duration(seconds: 10),
+          );
+      if (response.statusCode != 200) {
+        throw Exception('Active booking stream failed');
+      }
+
+      await for (final line in response.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())) {
+        if (!line.startsWith('data:')) continue;
+        final payload = line.substring(5).trim();
+        if (payload.isEmpty) continue;
+
+        final data = jsonDecode(payload);
+        final job = data is Map ? data['job'] : null;
+        if (job is Map) {
+          final activeJob = Map<String, dynamic>.from(job);
+          await cacheCustomerActiveBooking(activeJob);
+          yield activeJob;
+        } else {
+          await clearCustomerActiveBooking();
+          yield null;
+        }
+      }
+    } finally {
+      client.close();
     }
   }
 
@@ -629,25 +740,41 @@ class ApiService {
     required String vehicleType,
     required String schedule,
   }) async {
+    final cacheKey = 'estimate_v2_${pickup.latitude.toStringAsFixed(5)}_'
+        '${pickup.longitude.toStringAsFixed(5)}_'
+        '${drop.latitude.toStringAsFixed(5)}_'
+        '${drop.longitude.toStringAsFixed(5)}_${vehicleType}_$schedule';
+    final cached = await _readJsonCache(cacheKey, const Duration(minutes: 15));
+    if (cached is Map) {
+      return RideEstimate.fromJson(Map<String, dynamic>.from(cached));
+    }
+
     try {
       final token = await getAuthToken();
-      final response = await http.post(
-        Uri.parse('$baseUrl/quotes/estimate'),
-        headers: {
-          'Content-Type': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'pickup': _placePayload(pickup),
-          'drop': _placePayload(drop),
-          'vehicle_type': vehicleType,
-          'schedule': schedule,
-        }),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/quotes/estimate'),
+            headers: {
+              'Content-Type': 'application/json',
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'pickup': _placePayload(pickup),
+              'drop': _placePayload(drop),
+              'vehicle_type': vehicleType,
+              'schedule': schedule,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return RideEstimate.fromJson(Map<String, dynamic>.from(data));
+        if (data is Map) {
+          final estimateJson = Map<String, dynamic>.from(data);
+          await _writeJsonCache(cacheKey, estimateJson);
+          return RideEstimate.fromJson(estimateJson);
+        }
+        throw Exception('Invalid estimate response');
       } else {
         throw Exception(_errorMessage(
           response.body,
@@ -655,6 +782,10 @@ class ApiService {
         ));
       }
     } catch (e) {
+      final stale = await _readJsonCache(cacheKey, const Duration(days: 1));
+      if (stale is Map) {
+        return RideEstimate.fromJson(Map<String, dynamic>.from(stale));
+      }
       throw Exception('Error: $e');
     }
   }
@@ -792,6 +923,35 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> updateTripStatus(
+    String tripId,
+    String status,
+  ) async {
+    try {
+      final token = await getAuthToken();
+      final uri = Uri.parse('$baseUrl/trips/trip/$tripId/status').replace(
+        queryParameters: {'status': status},
+      );
+      final response = await http.patch(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      throw Exception(_errorMessage(
+        response.body,
+        fallback: 'Failed to update trip',
+      ));
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
   // Update location
   static Future<void> updateLocation(
       String uid, Map<String, dynamic> location) async {
@@ -825,6 +985,10 @@ class ApiService {
 
   // Get available vehicles
   static Future<List<dynamic>> getVehicles() async {
+    const cacheKey = 'vehicles_v2';
+    final cached = await _readJsonCache(cacheKey, const Duration(days: 1));
+    if (cached is List) return cached;
+
     try {
       final token = await getAuthToken();
       final response = await http.get(
@@ -836,11 +1000,18 @@ class ApiService {
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final data = jsonDecode(response.body);
+        if (data is List) {
+          await _writeJsonCache(cacheKey, data);
+          return data;
+        }
+        return [];
       } else {
         throw Exception('Failed to get vehicles');
       }
     } catch (e) {
+      final stale = await _readJsonCache(cacheKey, const Duration(days: 30));
+      if (stale is List) return stale;
       throw Exception('Error: $e');
     }
   }

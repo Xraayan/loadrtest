@@ -5,34 +5,40 @@ from firebase_admin import db
 
 
 DEFAULT_VEHICLE_TYPES = {
-    "construction_excavator": {
-        "name": "Construction Excavator",
-        "capacity": 20,
+    "three_wheeler_ape": {
+        "name": "3 Wheeler Ape",
+        "capacity": "750 kg capacity",
+        "base_fare": 300,
+        "minimum_fare": 300,
+        "included_km": 3,
+        "per_km_rate": 50,
         "active": True,
     },
-    "backhoe_loader": {
-        "name": "Backhoe Loader",
-        "capacity": 10,
+    "tata_ace": {
+        "name": "Tata Ace",
+        "capacity": "1000 kg / 1 ton capacity",
+        "base_fare": 600,
+        "minimum_fare": 600,
+        "included_km": 10,
+        "per_km_rate": 60,
         "active": True,
     },
-    "three_wheeler": {
-        "name": "3 Wheelers",
-        "capacity": 1,
+    "dost_pickup": {
+        "name": "Dost Pickup",
+        "capacity": "1.5 ton capacity",
+        "base_fare": 800,
+        "minimum_fare": 800,
+        "included_km": 5,
+        "per_km_rate": 40,
         "active": True,
     },
-    "pickup": {
-        "name": "Pickups",
-        "capacity": 2,
-        "active": True,
-    },
-    "tipper_truck": {
-        "name": "Tipper Trucks",
-        "capacity": 15,
-        "active": True,
-    },
-    "tata_407": {
-        "name": "Tata 407",
-        "capacity": 4,
+    "tata_407_water_tanker": {
+        "name": "Tata 407 Water Tanker",
+        "capacity": "5000 litre capacity",
+        "base_fare": 1350,
+        "minimum_fare": 1350,
+        "included_km": 5,
+        "per_km_rate": 30,
         "active": True,
     },
 }
@@ -47,7 +53,7 @@ DEFAULT_JOBS = {
         "dropoff_coords": {"latitude": 8.5689, "longitude": 76.8731},
         "state": "Kerala",
         "city": "Thiruvananthapuram",
-        "vehicle_type": "Tipper Trucks",
+        "vehicle_type": "Dost Pickup",
         "amount": 3200,
         "status": "open",
     },
@@ -59,7 +65,7 @@ DEFAULT_JOBS = {
         "dropoff_coords": {"latitude": 10.0159, "longitude": 76.3419},
         "state": "Kerala",
         "city": "Kochi",
-        "vehicle_type": "Pickups",
+        "vehicle_type": "Tata Ace",
         "amount": 1800,
         "status": "open",
     },
@@ -71,7 +77,7 @@ DEFAULT_JOBS = {
         "dropoff_coords": {"latitude": 12.9698, "longitude": 77.7499},
         "state": "Karnataka",
         "city": "Bengaluru",
-        "vehicle_type": "Tata 407",
+        "vehicle_type": "Tata 407 Water Tanker",
         "amount": 4500,
         "status": "open",
     },

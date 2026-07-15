@@ -5,15 +5,18 @@ from urllib.request import Request, urlopen
 
 from fastapi import APIRouter, HTTPException, Response, status
 
+from config import settings
+
 router = APIRouter()
 
+_MAP_STYLE = "osm-bright-smooth"
 _CACHE_TTL_SECONDS = 60 * 60 * 24
 _MAX_CACHE_ITEMS = 1200
-_tile_cache: dict[tuple[int, int, int], tuple[float, bytes]] = {}
+_tile_cache: dict[tuple[str, bool, int, int, int], tuple[float, bytes]] = {}
 _tile_cache_lock = Lock()
 
 
-def _cached_tile(key: tuple[int, int, int]) -> bytes | None:
+def _cached_tile(key: tuple[str, bool, int, int, int]) -> bytes | None:
     with _tile_cache_lock:
         cached = _tile_cache.get(key)
         if not cached:
@@ -25,7 +28,7 @@ def _cached_tile(key: tuple[int, int, int]) -> bytes | None:
         return content
 
 
-def _store_tile(key: tuple[int, int, int], content: bytes) -> None:
+def _store_tile(key: tuple[str, bool, int, int, int], content: bytes) -> None:
     with _tile_cache_lock:
         if len(_tile_cache) >= _MAX_CACHE_ITEMS:
             oldest_key = min(_tile_cache, key=lambda item: _tile_cache[item][0])
@@ -33,9 +36,18 @@ def _store_tile(key: tuple[int, int, int], content: bytes) -> None:
         _tile_cache[key] = (time(), content)
 
 
-@router.get("/tiles/{z}/{x}/{y}.png")
-def get_osm_tile(z: int, x: int, y: int):
-    if z < 0 or z > 19:
+@router.get("/geoapify/osm-bright-smooth/{z}/{x}/{y}@2x.png")
+def get_retina_map_tile(z: int, x: int, y: int):
+    return _get_map_tile(z, x, y, retina=True)
+
+
+@router.get("/geoapify/osm-bright-smooth/{z}/{x}/{y}.png")
+def get_map_tile(z: int, x: int, y: int):
+    return _get_map_tile(z, x, y, retina=False)
+
+
+def _get_map_tile(z: int, x: int, y: int, *, retina: bool):
+    if z < 0 or z > 20:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unsupported tile zoom",
@@ -48,16 +60,27 @@ def get_osm_tile(z: int, x: int, y: int):
             detail="Invalid tile coordinates",
         )
 
-    cache_key = (z, x, y)
+    api_key = (settings.geoapify_api_key or "").strip()
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Set GEOAPIFY_API_KEY in backend/.env",
+        )
+
+    cache_key = (_MAP_STYLE, retina, z, x, y)
     cached = _cached_tile(cache_key)
     if cached is not None:
         return _tile_response(cached)
 
-    tile_url = f"https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    scale = "@2x" if retina else ""
+    tile_url = (
+        f"https://maps.geoapify.com/v1/tile/{_MAP_STYLE}/"
+        f"{z}/{x}/{y}{scale}.png?apiKey={api_key}"
+    )
     request = Request(
         tile_url,
         headers={
-            "User-Agent": "LoadR development app; local backend tile proxy",
+            "User-Agent": "LoadR backend map tile proxy",
         },
     )
 

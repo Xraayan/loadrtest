@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from onboarding import update_onboarding_progress
 from role_profiles import get_role_profile, upsert_role_profile
 from supabase_config import get_supabase
+from vehicle_catalog import DEFAULT_VEHICLE_TYPES
 
 router = APIRouter()
 
@@ -35,12 +36,20 @@ def get_vehicles():
             .table("vehicle_types")
             .select("*")
             .eq("active", True)
-            .order("name")
+            .order("sort_order")
             .execute()
         )
-        return response.data or []
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        vehicles = response.data or []
+        priced = [
+            vehicle
+            for vehicle in vehicles
+            if vehicle.get("base_fare") is not None
+            and vehicle.get("minimum_fare") is not None
+            and vehicle.get("per_km_rate") is not None
+        ]
+        return priced or DEFAULT_VEHICLE_TYPES
+    except Exception:
+        return DEFAULT_VEHICLE_TYPES
 
 
 @router.get("/{uid}")
@@ -85,7 +94,7 @@ def assign_vehicle(uid: str, vehicle_number: str):
     """Assign vehicle type to driver.
 
     The query parameter is still named vehicle_number for frontend compatibility,
-    but the value is a vehicle type such as "Pickups" or "Tipper Trucks".
+    but the value is a vehicle type such as "Tata Ace" or "Dost Pickup".
     """
     try:
         profile = (

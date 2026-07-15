@@ -5,12 +5,14 @@ import 'package:loadr/constants.dart';
 import 'package:loadr/models/place_suggestion.dart';
 import 'package:loadr/models/ride_quote.dart';
 import 'package:loadr/services/api_service.dart';
+import 'package:loadr/widgets/skeleton.dart';
 
 class DriverLoadRequestScreen extends StatefulWidget {
   const DriverLoadRequestScreen({super.key});
 
   @override
-  State<DriverLoadRequestScreen> createState() => _DriverLoadRequestScreenState();
+  State<DriverLoadRequestScreen> createState() =>
+      _DriverLoadRequestScreenState();
 }
 
 class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
@@ -43,7 +45,7 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
       final estimate = await ApiService.estimateRide(
         pickup: pickup,
         drop: drop,
-        vehicleType: _text(job['vehicle_type'], fallback: 'Pickup'),
+        vehicleType: _text(job['vehicle_type'], fallback: 'Tata Ace'),
         schedule: 'Now',
       );
       if (!mounted) return;
@@ -106,9 +108,7 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator(color: kPrimaryOrange)),
-      );
+      return const MapScreenSkeleton();
     }
 
     final job = _job;
@@ -144,8 +144,9 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
     final drop = _placeFromJob(job, pickup: false);
     final pickupPoint = LatLng(pickup.latitude, pickup.longitude);
     final dropPoint = LatLng(drop.latitude, drop.longitude);
-    final routePoints =
-        estimate.routePoints.isEmpty ? [pickupPoint, dropPoint] : estimate.routePoints;
+    final routePoints = estimate.routePoints.isEmpty
+        ? [pickupPoint, dropPoint]
+        : estimate.routePoints;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F7),
@@ -166,7 +167,7 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
                   maxZoom: 15,
                 ),
                 minZoom: 4,
-                maxZoom: 18,
+                maxZoom: 20,
                 interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.drag |
                       InteractiveFlag.pinchZoom |
@@ -176,9 +177,11 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
               children: [
                 TileLayer(
                   urlTemplate: ApiService.mapTileUrlTemplate,
-                  userAgentPackageName: 'com.loadr.app',
+                  retinaMode: false,
+                  userAgentPackageName: 'com.example.loadr',
                   panBuffer: 0,
-                  maxZoom: 19,
+                  maxNativeZoom: 20,
+                  maxZoom: 20,
                 ),
                 PolylineLayer(
                   polylines: [
@@ -217,7 +220,9 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
                 ),
                 const RichAttributionWidget(
                   attributions: [
-                    TextSourceAttribution('OpenStreetMap contributors'),
+                    TextSourceAttribution(
+                      'Geoapify | OpenStreetMap contributors',
+                    ),
                   ],
                 ),
               ],
@@ -353,7 +358,8 @@ class _LoadRequestPanel extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
-                _InfoChip(icon: Icons.local_shipping_outlined, label: vehicleType),
+                _InfoChip(
+                    icon: Icons.local_shipping_outlined, label: vehicleType),
                 _InfoChip(
                   icon: Icons.route,
                   label: '${estimate.distanceKm.toStringAsFixed(1)} km',
@@ -635,7 +641,8 @@ class _MapZoomControls extends StatelessWidget {
   }
 }
 
-PlaceSuggestion _placeFromJob(Map<String, dynamic> job, {required bool pickup}) {
+PlaceSuggestion _placeFromJob(Map<String, dynamic> job,
+    {required bool pickup}) {
   final prefix = pickup ? 'pickup' : 'dropoff';
   final coords = job['${prefix}_coords'];
   if (coords is! Map) {

@@ -67,7 +67,7 @@ class RideEstimate {
         : (quotes.isNotEmpty
             ? quotes.first
             : const VehicleQuote(
-                vehicleType: 'Pickup',
+                vehicleType: 'Tata Ace',
                 distanceKm: 0,
                 baseFare: 0,
                 perKmRate: 0,
@@ -82,16 +82,14 @@ class RideEstimate {
       distanceKm: VehicleQuote._toDouble(json['distance_km']),
       selectedQuote: selected,
       vehicleQuotes: quotes,
-      routePoints: (json['route_points'] as List? ?? [])
-          .whereType<Map>()
-          .map((item) {
-            final point = Map<String, dynamic>.from(item);
-            return LatLng(
-              VehicleQuote._toDouble(point['latitude']),
-              VehicleQuote._toDouble(point['longitude']),
-            );
-          })
-          .toList(),
+      routePoints:
+          (json['route_points'] as List? ?? []).whereType<Map>().map((item) {
+        final point = Map<String, dynamic>.from(item);
+        return LatLng(
+          VehicleQuote._toDouble(point['latitude']),
+          VehicleQuote._toDouble(point['longitude']),
+        );
+      }).toList(),
       city: '${metadata['city'] ?? ''}',
       district: '${metadata['district'] ?? ''}',
       state: '${metadata['state'] ?? ''}',

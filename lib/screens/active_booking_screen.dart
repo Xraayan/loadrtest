@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:loadr/constants.dart';
 import 'package:loadr/models/place_suggestion.dart';
 import 'package:loadr/services/api_service.dart';
+import 'package:loadr/widgets/skeleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ActiveBookingScreen extends StatefulWidget {
@@ -21,7 +22,8 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
   Map<String, dynamic>? _booking;
   bool _isLoading = true;
   bool _isRefreshing = false;
-  Timer? _refreshTimer;
+  bool _isCanceling = false;
+  StreamSubscription<Map<String, dynamic>?>? _bookingSubscription;
 
   @override
   void initState() {
@@ -32,8 +34,9 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
   Future<void> _loadBooking() async {
     setState(() => _isLoading = true);
     var booking = await _readLocalBooking();
+    String? uid;
     try {
-      final uid = await ApiService.getUid();
+      uid = await ApiService.getUid();
       if (uid != null) {
         final backendBooking = await ApiService.getCustomerActiveJob(uid);
         if (backendBooking != null) {
@@ -52,12 +55,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
       _booking = booking;
       _isLoading = false;
     });
-    await _refreshJobStatus(showErrors: false);
-    _refreshTimer?.cancel();
-    _refreshTimer = Timer.periodic(
-      const Duration(seconds: 12),
-      (_) => _refreshJobStatus(showErrors: false),
-    );
+    if (uid != null) _startBookingStream(uid);
   }
 
   Future<Map<String, dynamic>?> _readLocalBooking() async {
@@ -108,6 +106,31 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
     }
   }
 
+  void _startBookingStream(String uid) {
+    _bookingSubscription?.cancel();
+    _bookingSubscription = ApiService.streamCustomerActiveJob(uid).listen(
+      (job) {
+        if (!mounted) return;
+        if (job == null) {
+          final current = _booking;
+          setState(() {
+            _booking = current == null || !_isOnTrip(current)
+                ? null
+                : {...current, 'status': 'completed'};
+          });
+          return;
+        }
+
+        final current = _booking;
+        final next = current == null ? job : _mergeJobIntoBooking(current, job);
+        setState(() => _booking = next);
+      },
+      onError: (_) {
+        // Cached/manual refresh keeps the screen usable if the stream drops.
+      },
+    );
+  }
+
   Map<String, dynamic> _mergeJobIntoBooking(
     Map<String, dynamic> booking,
     Map<String, dynamic> job,
@@ -118,10 +141,12 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
       'status': job['status'] ?? booking['status'],
       'assigned_driver_uid':
           job['assigned_driver_uid'] ?? booking['assigned_driver_uid'],
-      'assigned_trip_id': job['assigned_trip_id'] ?? booking['assigned_trip_id'],
+      'assigned_trip_id':
+          job['assigned_trip_id'] ?? booking['assigned_trip_id'],
       'assigned_at': job['assigned_at'] ?? booking['assigned_at'],
       'pickup_location': job['pickup_location'] ?? booking['pickup_location'],
-      'dropoff_location': job['dropoff_location'] ?? booking['dropoff_location'],
+      'dropoff_location':
+          job['dropoff_location'] ?? booking['dropoff_location'],
       'pickup_coords': job['pickup_coords'] ?? booking['pickup_coords'],
       'dropoff_coords': job['dropoff_coords'] ?? booking['dropoff_coords'],
       'vehicle_type': job['vehicle_type'] ?? booking['vehicle_type'],
@@ -136,9 +161,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const MapScreenSkeleton();
     }
 
     final booking = _booking;
@@ -197,6 +220,8 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
             child: _BookingPanel(
               booking: booking,
               refreshing: _isRefreshing,
+              canceling: _isCanceling,
+              onCancel: _cancelPickup,
             ),
           ),
         ],
@@ -210,9 +235,54 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
     _mapController.move(camera.center, nextZoom);
   }
 
+  Future<void> _cancelPickup() async {
+    final jobId = '${_booking?['job_id'] ?? _booking?['id'] ?? ''}'.trim();
+    if (jobId.isEmpty || _isCanceling) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel pickup?'),
+        content:
+            const Text('This will remove the booking for you and the driver.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep booking'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Cancel pickup'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
+    setState(() => _isCanceling = true);
+    try {
+      await ApiService.cancelJob(jobId);
+      if (!mounted) return;
+      setState(() => _booking = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pickup cancelled')),
+      );
+      Navigator.pushReplacementNamed(context, '/customer-home');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cancel failed: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isCanceling = false);
+      }
+    }
+  }
+
   @override
   void dispose() {
-    _refreshTimer?.cancel();
+    _bookingSubscription?.cancel();
     super.dispose();
   }
 }
@@ -260,7 +330,7 @@ class _RouteMap extends StatelessWidget {
               maxZoom: 15,
             ),
             minZoom: 4,
-            maxZoom: 18,
+            maxZoom: 20,
             interactionOptions: const InteractionOptions(
               flags: InteractiveFlag.drag |
                   InteractiveFlag.pinchZoom |
@@ -270,9 +340,11 @@ class _RouteMap extends StatelessWidget {
           children: [
             TileLayer(
               urlTemplate: ApiService.mapTileUrlTemplate,
-              userAgentPackageName: 'com.loadr.app',
+              retinaMode: false,
+              userAgentPackageName: 'com.example.loadr',
               panBuffer: 0,
-              maxZoom: 19,
+              maxNativeZoom: 20,
+              maxZoom: 20,
             ),
             PolylineLayer(
               polylines: [
@@ -325,7 +397,9 @@ class _RouteMap extends StatelessWidget {
             ),
             const RichAttributionWidget(
               attributions: [
-                TextSourceAttribution('OpenStreetMap contributors'),
+                TextSourceAttribution(
+                  'Geoapify | OpenStreetMap contributors',
+                ),
               ],
             ),
           ],
@@ -418,10 +492,14 @@ class _TopBar extends StatelessWidget {
 class _BookingPanel extends StatelessWidget {
   final Map<String, dynamic> booking;
   final bool refreshing;
+  final bool canceling;
+  final VoidCallback onCancel;
 
   const _BookingPanel({
     required this.booking,
     required this.refreshing,
+    required this.canceling,
+    required this.onCancel,
   });
 
   @override
@@ -441,6 +519,15 @@ class _BookingPanel extends StatelessWidget {
     final vehicleType = _text(booking['vehicle_type'], fallback: 'Vehicle');
     final amount = _asDouble(booking['amount']);
     final distanceKm = _asDouble(booking['distance_km']);
+    final rawStatus = _text(booking['status']).toLowerCase();
+    final canCancel = !{
+      'completed',
+      'cancelled',
+      'in_progress',
+      'started',
+      'pickup',
+      'loaded',
+    }.contains(rawStatus);
 
     return SafeArea(
       top: false,
@@ -550,6 +637,31 @@ class _BookingPanel extends StatelessWidget {
                   ),
                 ],
               ),
+              if (canCancel) ...[
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: canceling ? null : onCancel,
+                    icon: canceling
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.cancel_outlined),
+                    label: Text(canceling ? 'Cancelling...' : 'Cancel pickup'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFB3261E),
+                      side: const BorderSide(color: Color(0xFFFFC4C4)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -926,6 +1038,34 @@ class _BookingStatus {
 }
 
 _BookingStatus _bookingStatus(Map<String, dynamic> booking) {
+  final rawStatus = _text(booking['status']).toLowerCase();
+  if (rawStatus == 'completed') {
+    return const _BookingStatus(
+      title: 'Trip completed',
+      subtitle: 'Your load has reached the drop-off location.',
+      pill: 'Done',
+    );
+  }
+
+  if (rawStatus == 'arriving') {
+    return const _BookingStatus(
+      title: 'Driver is reaching pickup',
+      subtitle: 'Your driver is near the pickup location.',
+      pill: 'Arriving',
+    );
+  }
+
+  if (rawStatus == 'in_progress' ||
+      rawStatus == 'started' ||
+      rawStatus == 'pickup' ||
+      rawStatus == 'loaded') {
+    return const _BookingStatus(
+      title: 'Pickup confirmed',
+      subtitle: 'Your load is now on the way to drop-off.',
+      pill: 'On trip',
+    );
+  }
+
   if (_isAccepted(booking)) {
     return const _BookingStatus(
       title: 'Driver accepted',
@@ -945,7 +1085,18 @@ bool _isAccepted(Map<String, dynamic> booking) {
   final status = _text(booking['status']).toLowerCase();
   return status == 'assigned' ||
       status == 'accepted' ||
+      status == 'arriving' ||
+      status == 'in_progress' ||
+      status == 'completed' ||
       _text(booking['assigned_driver_uid']).isNotEmpty;
+}
+
+bool _isOnTrip(Map<String, dynamic> booking) {
+  final status = _text(booking['status']).toLowerCase();
+  return status == 'in_progress' ||
+      status == 'started' ||
+      status == 'pickup' ||
+      status == 'loaded';
 }
 
 PlaceSuggestion? _placeFromBooking(
@@ -1015,6 +1166,10 @@ List<LatLng> _nearbyDriverPoints(Map<String, dynamic> booking) {
 }
 
 String _driverLocationText(Map<String, dynamic> booking) {
+  if (_text(booking['status']).toLowerCase() == 'completed') {
+    return 'Trip completed';
+  }
+
   final driver = _driverPointFromBooking(booking);
   final pickup = _placeFromBooking(booking, 'pickup');
   if (driver == null || pickup == null) return 'Live location unavailable';
@@ -1024,6 +1179,7 @@ String _driverLocationText(Map<String, dynamic> booking) {
     driver,
     LatLng(pickup.latitude, pickup.longitude),
   );
+  if (km <= 0.5) return 'Driver is reaching pickup';
   return '${km.toStringAsFixed(1)} km from pickup - live on map';
 }
 

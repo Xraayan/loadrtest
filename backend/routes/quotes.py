@@ -9,16 +9,10 @@ from pydantic import BaseModel
 
 from dependencies import CurrentUser, get_current_user
 from config import settings
+from supabase_config import get_supabase
+from vehicle_catalog import DEFAULT_VEHICLE_TYPES, quote_for_vehicle
 
 router = APIRouter()
-
-
-VEHICLE_RATES = {
-    "Pickup": {"base_fare": 450.0, "per_km_rate": 38.0, "minimum_fare": 700.0},
-    "Mini Truck": {"base_fare": 650.0, "per_km_rate": 48.0, "minimum_fare": 950.0},
-    "Tipper": {"base_fare": 950.0, "per_km_rate": 68.0, "minimum_fare": 1400.0},
-    "Tata 407": {"base_fare": 800.0, "per_km_rate": 58.0, "minimum_fare": 1200.0},
-}
 
 KNOWN_STATES = {
     "andhra pradesh",
@@ -66,7 +60,7 @@ class LocationPoint(BaseModel):
 class QuoteRequest(BaseModel):
     pickup: LocationPoint
     drop: LocationPoint
-    vehicle_type: str = "Pickup"
+    vehicle_type: str = "Tata Ace"
     schedule: str = "Now"
 
 
@@ -86,32 +80,49 @@ def _haversine_km(pickup: LocationPoint, drop: LocationPoint) -> float:
     return earth_radius_km * c
 
 
-def _round_to_nearest(value: float, nearest: int) -> float:
-    return round(value / nearest) * float(nearest)
-
-
 def _quote_for(vehicle_type: str, distance_km: float) -> dict:
-    rate = VEHICLE_RATES.get(vehicle_type, VEHICLE_RATES["Pickup"])
-    raw_amount = rate["base_fare"] + (distance_km * rate["per_km_rate"])
-    amount = max(rate["minimum_fare"], raw_amount)
-    return {
-        "vehicle_type": vehicle_type,
-        "distance_km": distance_km,
-        "base_fare": rate["base_fare"],
-        "per_km_rate": rate["per_km_rate"],
-        "minimum_fare": rate["minimum_fare"],
-        "amount": _round_to_nearest(amount, 10),
-    }
+    vehicles = _vehicle_types()
+    vehicle = next(
+        (
+            item
+            for item in vehicles
+            if str(item.get("name", "")).lower() == vehicle_type.lower()
+        ),
+        vehicles[0],
+    )
+    return quote_for_vehicle(vehicle, distance_km)
+
+
+def _vehicle_types() -> list[dict]:
+    try:
+        vehicles = (
+            get_supabase()
+            .table("vehicle_types")
+            .select("*")
+            .eq("active", True)
+            .order("sort_order")
+            .execute()
+            .data
+            or []
+        )
+        usable = [
+            vehicle
+            for vehicle in vehicles
+            if vehicle.get("base_fare") is not None
+            and vehicle.get("per_km_rate") is not None
+            and vehicle.get("minimum_fare") is not None
+        ]
+        return usable or DEFAULT_VEHICLE_TYPES
+    except Exception:
+        return DEFAULT_VEHICLE_TYPES
 
 
 def _suggest_vehicle_type(distance_km: float) -> str:
-    if distance_km < 12:
-        return "Pickup"
-    if distance_km < 35:
-        return "Mini Truck"
-    if distance_km < 80:
-        return "Tata 407"
-    return "Tipper"
+    if distance_km <= 5:
+        return "3 Wheeler Ape"
+    if distance_km <= 10:
+        return "Tata Ace"
+    return "Dost Pickup"
 
 
 def _parse_location_metadata(place: LocationPoint) -> dict:
@@ -203,7 +214,10 @@ def estimate_quote(
     """Estimate route distance and vehicle pricing on the trusted backend."""
     try:
         distance_km, route_points = _route_for(request.pickup, request.drop)
-        quotes = [_quote_for(vehicle_type, distance_km) for vehicle_type in VEHICLE_RATES]
+        quotes = [
+            quote_for_vehicle(vehicle, distance_km)
+            for vehicle in _vehicle_types()
+        ]
         selected_quote = next(
             (quote for quote in quotes if quote["vehicle_type"] == request.vehicle_type),
             quotes[0],

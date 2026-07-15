@@ -1,8 +1,11 @@
 from datetime import datetime, timezone
+from json import dumps
+from time import sleep
 from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from dependencies import CurrentUser, get_current_user, require_current_user_uid
@@ -16,6 +19,7 @@ ACTIVE_TRIP_STATUSES = {
     "pending",
     "accepted",
     "assigned",
+    "arriving",
     "in_progress",
     "started",
     "on_the_way",
@@ -23,7 +27,7 @@ ACTIVE_TRIP_STATUSES = {
     "loaded",
 }
 
-ACTIVE_JOB_STATUSES = {"assigned", "accepted", "in_progress"}
+ACTIVE_JOB_STATUSES = {"assigned", "accepted", "arriving", "in_progress"}
 
 
 class JobCreate(BaseModel):
@@ -169,6 +173,24 @@ def _active_assignment_for_driver(uid: str) -> Optional[dict]:
     }
 
 
+def _active_customer_job(uid: str) -> Optional[dict]:
+    response = (
+        get_supabase()
+        .table("jobs")
+        .select("*")
+        .eq("customer_uid", uid)
+        .in_(
+            "status",
+            ["open", "assigned", "accepted", "arriving", "in_progress"],
+        )
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    jobs = response.data or []
+    return jobs[0] if jobs else None
+
+
 @router.get("/")
 def search_jobs(
     state: Optional[str] = None,
@@ -282,20 +304,38 @@ def get_active_customer_job(
     """Get the customer's latest open or assigned job."""
     require_current_user_uid(uid, current_user)
     try:
-        response = (
-            get_supabase()
-            .table("jobs")
-            .select("*")
-            .eq("customer_uid", uid)
-            .in_("status", ["open", "assigned", "accepted", "in_progress"])
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        jobs = response.data or []
-        return {"job": _job_with_driver(jobs[0]) if jobs else None}
+        job = _active_customer_job(uid)
+        return {"job": _job_with_driver(job) if job else None}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/customer/{uid}/active/stream")
+def stream_active_customer_job(
+    uid: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Push customer job changes to the app without client-side polling."""
+    require_current_user_uid(uid, current_user)
+
+    def events():
+        last_payload = ""
+        while True:
+            try:
+                job = _active_customer_job(uid)
+                payload = dumps(
+                    {"job": _job_with_driver(job) if job else None},
+                    default=str,
+                    sort_keys=True,
+                )
+                if payload != last_payload:
+                    yield f"data: {payload}\n\n"
+                    last_payload = payload
+            except Exception:
+                yield 'event: error\ndata: {"message":"stream unavailable"}\n\n'
+            sleep(2)
+
+    return StreamingResponse(events(), media_type="text/event-stream")
 
 
 @router.get("/{job_id}")
@@ -314,6 +354,71 @@ def get_job(job_id: str, current_user: CurrentUser = Depends(get_current_user)):
         if not job:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
         return _job_with_driver(job)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.patch("/{job_id}/cancel")
+def cancel_job(job_id: str, current_user: CurrentUser = Depends(get_current_user)):
+    """Cancel a customer pickup before completion."""
+    try:
+        supabase = get_supabase()
+        job = (
+            supabase.table("jobs")
+            .select("*")
+            .eq("id", job_id)
+            .maybe_single()
+            .execute()
+            .data
+        )
+        if not job:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+
+        require_current_user_uid(job.get("customer_uid"), current_user)
+        if job.get("status") in {
+            "completed",
+            "cancelled",
+            "in_progress",
+            "started",
+            "pickup",
+            "loaded",
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This pickup can no longer be cancelled",
+            )
+
+        now = _now()
+        updated = (
+            supabase.table("jobs")
+            .update({"status": "cancelled", "updated_at": now})
+            .eq("id", job_id)
+            .execute()
+            .data
+        )
+        if job.get("assigned_trip_id"):
+            supabase.table("trips").update(
+                {"status": "cancelled", "updated_at": now}
+            ).eq("id", job["assigned_trip_id"]).execute()
+
+        if job.get("assigned_driver_uid"):
+            supabase.table("notifications").insert(
+                {
+                    "user_uid": job["assigned_driver_uid"],
+                    "title": "Pickup cancelled",
+                    "message": "Customer cancelled the pickup.",
+                    "type": "trip",
+                    "read": False,
+                    "created_at": now,
+                }
+            ).execute()
+
+        return {
+            "message": "Pickup cancelled",
+            "job": _job_with_id(updated[0] if updated else {**job, "status": "cancelled"}),
+        }
     except HTTPException:
         raise
     except Exception as e:

@@ -29,7 +29,7 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
   PlaceSuggestion? _pickupPlace;
   PlaceSuggestion? _dropPlace;
   List<PlaceSuggestion> _locationSuggestions = [];
-  String _selectedVehicle = 'Pickup';
+  String _selectedVehicle = 'Tata Ace';
   String _selectedSchedule = 'Now';
   bool _searchingPickup = true;
   bool _isSearchingLocation = false;
@@ -77,6 +77,13 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
     await Future<void>.delayed(const Duration(milliseconds: 120));
     if (!mounted) return;
 
+    final prefs = await SharedPreferences.getInstance();
+    final savedLatitude = prefs.getDouble('customer_latitude');
+    final savedLongitude = prefs.getDouble('customer_longitude');
+    final savedPoint = savedLatitude == null || savedLongitude == null
+        ? null
+        : LatLng(savedLatitude, savedLongitude);
+
     final result = await showModalBottomSheet<_MapPickerResult>(
       context: context,
       isScrollControlled: true,
@@ -87,6 +94,7 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
           initialIsPickup: isPickup,
           pickupPlace: _pickupPlace,
           dropPlace: _dropPlace,
+          savedPoint: savedPoint,
           resolveCurrentPosition: _determinePosition,
         );
       },
@@ -256,7 +264,16 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
         schedule: _selectedSchedule,
       );
       if (!mounted) return null;
-      setState(() => _rideEstimate = estimate);
+      setState(() {
+        _rideEstimate = estimate;
+        if (estimate.vehicleQuotes.isNotEmpty &&
+            estimate.quoteFor(_selectedVehicle).vehicleType !=
+                _selectedVehicle) {
+          _selectedVehicle = estimate.suggestedVehicleType.trim().isNotEmpty
+              ? estimate.suggestedVehicleType
+              : estimate.vehicleQuotes.first.vehicleType;
+        }
+      });
       return estimate;
     } catch (e) {
       if (!mounted) return null;
@@ -445,12 +462,7 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
                     setState(() => _selectedVehicle = suggested);
                   },
                 ),
-                for (final vehicle in const [
-                  'Pickup',
-                  'Mini Truck',
-                  'Tipper',
-                  'Tata 407',
-                ])
+                for (final vehicle in _vehicleOptions())
                   _VehicleChip(
                     label: vehicle,
                     amount: _quoteForVehicle(vehicle)?.amount,
@@ -478,7 +490,8 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
           child: SizedBox(
             height: 56,
             child: ElevatedButton(
-              onPressed: (_isOpeningQuote || _isEstimatingRide) ? null : _continue,
+              onPressed:
+                  (_isOpeningQuote || _isEstimatingRide) ? null : _continue,
               style: ElevatedButton.styleFrom(
                 backgroundColor: kPrimaryOrange,
                 foregroundColor: Colors.white,
@@ -508,6 +521,19 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
         ),
       ),
     );
+  }
+
+  List<String> _vehicleOptions() {
+    final quotes = _rideEstimate?.vehicleQuotes;
+    if (quotes != null && quotes.isNotEmpty) {
+      return quotes.map((quote) => quote.vehicleType).toList();
+    }
+    return const [
+      '3 Wheeler Ape',
+      'Tata Ace',
+      'Dost Pickup',
+      'Tata 407 Water Tanker',
+    ];
   }
 
   @override
@@ -841,12 +867,14 @@ class _MapPickerSheet extends StatefulWidget {
   final bool initialIsPickup;
   final PlaceSuggestion? pickupPlace;
   final PlaceSuggestion? dropPlace;
+  final LatLng? savedPoint;
   final Future<Position> Function() resolveCurrentPosition;
 
   const _MapPickerSheet({
     required this.initialIsPickup,
     required this.pickupPlace,
     required this.dropPlace,
+    required this.savedPoint,
     required this.resolveCurrentPosition,
   });
 
@@ -855,7 +883,7 @@ class _MapPickerSheet extends StatefulWidget {
 }
 
 class _MapPickerSheetState extends State<_MapPickerSheet> {
-  static const LatLng _defaultCenter = LatLng(11.2588, 75.7804);
+  static const LatLng _defaultCenter = LatLng(20.5937, 78.9629);
 
   final _mapController = MapController();
   late bool _isPickup;
@@ -872,14 +900,18 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
   void initState() {
     super.initState();
     _isPickup = widget.initialIsPickup;
-    _selectedPoint = _pointForCurrentField() ?? _defaultCenter;
+    final fieldPoint = _pointForCurrentField();
+    _selectedPoint = fieldPoint ?? widget.savedPoint ?? _defaultCenter;
     _resolvedPlace = _currentPlace;
     _selectedAddress = _resolvedPlace?.displayName;
-    if (_selectedAddress == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _scheduleReverseLookup();
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (fieldPoint == null && widget.savedPoint == null) {
+        _moveToCurrentLocation();
+      } else if (_selectedAddress == null) {
+        _scheduleReverseLookup();
+      }
+    });
   }
 
   PlaceSuggestion? get _currentPlace {
@@ -1050,76 +1082,76 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
             child: Column(
               mainAxisSize: MainAxisSize.max,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE0E0E0),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Set location on map',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 14),
-              _ScheduleSegmentedControl(
-                selectedValue: _isPickup ? 'Pick-up' : 'Drop',
-                values: const ['Pick-up', 'Drop'],
-                icons: const [
-                  Icons.radio_button_checked,
-                  Icons.location_on_outlined,
-                ],
-                onChanged: (value) => _setField(value == 'Pick-up'),
-              ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: _OsmMapPicker(
-                  controller: _mapController,
-                  selectedPoint: _selectedPoint,
-                  selectedAddress: _selectedAddress,
-                  loading: _loading,
-                  resolvingAddress: _resolvingAddress,
-                  onPositionChanged: _setSelectedPoint,
-                  onUseCurrentLocation: _moveToCurrentLocation,
-                ),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                _InlineMessage(text: _error!),
-              ],
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _loading ? null : _confirm,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: kPrimaryOrange,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE0E0E0),
+                      borderRadius: BorderRadius.circular(999),
                     ),
                   ),
-                  child: const Text(
-                    'Confirm location',
-                    style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Set location on map',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 14),
+                _ScheduleSegmentedControl(
+                  selectedValue: _isPickup ? 'Pick-up' : 'Drop',
+                  values: const ['Pick-up', 'Drop'],
+                  icons: const [
+                    Icons.radio_button_checked,
+                    Icons.location_on_outlined,
+                  ],
+                  onChanged: (value) => _setField(value == 'Pick-up'),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: _GeoapifyMapPicker(
+                    controller: _mapController,
+                    selectedPoint: _selectedPoint,
+                    selectedAddress: _selectedAddress,
+                    loading: _loading,
+                    resolvingAddress: _resolvingAddress,
+                    onPositionChanged: _setSelectedPoint,
+                    onUseCurrentLocation: _moveToCurrentLocation,
+                  ),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  _InlineMessage(text: _error!),
+                ],
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: _loading ? null : _confirm,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: kPrimaryOrange,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      'Confirm location',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+              ],
             ),
+          ),
         ),
-      ),
       ),
     );
   }
@@ -1131,7 +1163,7 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
   }
 }
 
-class _OsmMapPicker extends StatelessWidget {
+class _GeoapifyMapPicker extends StatelessWidget {
   final MapController controller;
   final LatLng selectedPoint;
   final String? selectedAddress;
@@ -1140,7 +1172,7 @@ class _OsmMapPicker extends StatelessWidget {
   final ValueChanged<LatLng> onPositionChanged;
   final VoidCallback onUseCurrentLocation;
 
-  const _OsmMapPicker({
+  const _GeoapifyMapPicker({
     required this.controller,
     required this.selectedPoint,
     required this.selectedAddress,
@@ -1169,7 +1201,7 @@ class _OsmMapPicker extends StatelessWidget {
                 initialCenter: selectedPoint,
                 initialZoom: 15,
                 minZoom: 4,
-                maxZoom: 18,
+                maxZoom: 20,
                 interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.drag |
                       InteractiveFlag.pinchZoom |
@@ -1184,13 +1216,17 @@ class _OsmMapPicker extends StatelessWidget {
               children: [
                 TileLayer(
                   urlTemplate: ApiService.mapTileUrlTemplate,
-                  userAgentPackageName: 'com.loadr.app',
+                  retinaMode: false,
+                  userAgentPackageName: 'com.example.loadr',
                   panBuffer: 0,
-                  maxZoom: 19,
+                  maxNativeZoom: 20,
+                  maxZoom: 20,
                 ),
                 const RichAttributionWidget(
                   attributions: [
-                    TextSourceAttribution('OpenStreetMap contributors'),
+                    TextSourceAttribution(
+                      'Geoapify | OpenStreetMap contributors',
+                    ),
                   ],
                 ),
               ],
@@ -1510,7 +1546,9 @@ class _VehicleChip extends StatelessWidget {
                   : null,
             ),
             child: Text(
-              amount == null ? label : '$label  Rs ${amount!.toStringAsFixed(0)}',
+              amount == null
+                  ? label
+                  : '$label  Rs ${amount!.toStringAsFixed(0)}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(

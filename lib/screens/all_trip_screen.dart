@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:loadr/services/api_service.dart';
+import 'package:loadr/widgets/skeleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AllTripScreen extends StatefulWidget {
@@ -67,7 +68,10 @@ class _AllTripScreenState extends State<AllTripScreen> {
       body: RefreshIndicator(
         onRefresh: _loadTrips,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? ListView(
+                padding: const EdgeInsets.all(16),
+                children: const [CardListSkeleton()],
+              )
             : _trips.isEmpty
                 ? _EmptyTrips()
                 : ListView.builder(

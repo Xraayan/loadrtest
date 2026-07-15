@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../constants.dart';
 import '../widgets/onboarding_stepper.dart';
 import '../services/api_service.dart';
+import '../widgets/skeleton.dart';
 
 class VehicleSelectionScreen extends StatefulWidget {
   const VehicleSelectionScreen({super.key});
@@ -16,6 +17,12 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   List<Map<String, dynamic>> vehicles = [];
+  static const _fallbackVehicles = [
+    {"name": "3 Wheeler Ape", "color": "0xFF3F51B5"},
+    {"name": "Tata Ace", "color": "0xFFFF7043"},
+    {"name": "Dost Pickup", "color": "0xFF546E7A"},
+    {"name": "Tata 407 Water Tanker", "color": "0xFF9FA8DA"},
+  ];
 
   @override
   void initState() {
@@ -27,16 +34,8 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
     try {
       final vehicleList = await ApiService.getVehicles();
       setState(() {
-        // If no vehicles in backend, use default list
         if (vehicleList.isEmpty) {
-          vehicles = [
-            {"name": "Construction Excavator", "color": "0xFF78909C"},
-            {"name": "Backhoe Loader", "color": "0xFFFF7043"},
-            {"name": "3 Wheelers", "color": "0xFF3F51B5"},
-            {"name": "Pickups", "color": "0xFF546E7A"},
-            {"name": "Tipper Trucks", "color": "0xFFFF7043"},
-            {"name": "Tata 407", "color": "0xFF9FA8DA"},
-          ];
+          vehicles = List<Map<String, dynamic>>.from(_fallbackVehicles);
         } else {
           vehicles = vehicleList
               .map((v) => {
@@ -50,16 +49,8 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
       });
     } catch (e) {
       if (mounted) {
-        // Use default vehicles on error
         setState(() {
-          vehicles = [
-            {"name": "Construction Excavator", "color": "0xFF78909C"},
-            {"name": "Backhoe Loader", "color": "0xFFFF7043"},
-            {"name": "3 Wheelers", "color": "0xFF3F51B5"},
-            {"name": "Pickups", "color": "0xFF546E7A"},
-            {"name": "Tipper Trucks", "color": "0xFFFF7043"},
-            {"name": "Tata 407", "color": "0xFF9FA8DA"},
-          ];
+          vehicles = List<Map<String, dynamic>>.from(_fallbackVehicles);
           _isLoading = false;
         });
       }
@@ -125,7 +116,7 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
               const SizedBox(height: 20),
               Expanded(
                 child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const GridSkeleton()
                     : GridView.builder(
                         gridDelegate:
                             const SliverGridDelegateWithFixedCrossAxisCount(

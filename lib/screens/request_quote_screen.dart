@@ -194,7 +194,7 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                   maxZoom: 15,
                 ),
                 minZoom: 4,
-                maxZoom: 18,
+                maxZoom: 20,
                 interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.drag |
                       InteractiveFlag.pinchZoom |
@@ -204,9 +204,11 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
               children: [
                 TileLayer(
                   urlTemplate: ApiService.mapTileUrlTemplate,
-                  userAgentPackageName: 'com.loadr.app',
+                  retinaMode: false,
+                  userAgentPackageName: 'com.example.loadr',
                   panBuffer: 0,
-                  maxZoom: 19,
+                  maxNativeZoom: 20,
+                  maxZoom: 20,
                 ),
                 PolylineLayer(
                   polylines: [
@@ -241,10 +243,7 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                         foregroundColor: Colors.white,
                       ),
                     ),
-                    ..._nearbyDrivers
-                        .map(_driverPoint)
-                        .whereType<LatLng>()
-                        .map(
+                    ..._nearbyDrivers.map(_driverPoint).whereType<LatLng>().map(
                           (point) => Marker(
                             point: point,
                             width: 38,
@@ -256,7 +255,9 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                 ),
                 const RichAttributionWidget(
                   attributions: [
-                    TextSourceAttribution('OpenStreetMap contributors'),
+                    TextSourceAttribution(
+                      'Geoapify | OpenStreetMap contributors',
+                    ),
                   ],
                 ),
               ],
