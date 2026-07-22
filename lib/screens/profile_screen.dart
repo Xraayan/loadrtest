@@ -14,6 +14,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _role = '';
   String _name = 'Profile';
   String _subtitle = '';
+  String _locationSubtitle = 'Saved on this device';
   bool _isLoggingOut = false;
 
   @override
@@ -31,14 +32,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final subtitle = role == 'driver'
         ? prefs.getString('driver_vehicle_number')
         : prefs.getString('customer_email');
+    final locationRole = role == 'driver' ? 'driver' : 'customer';
+    final locationLabel =
+        _cleanText(prefs.getString('${locationRole}_location_label'));
+    final latitude = prefs.getDouble('${locationRole}_latitude');
+    final longitude = prefs.getDouble('${locationRole}_longitude');
 
     if (!mounted) return;
     setState(() {
       _role = role;
       _name = (name == null || name.trim().isEmpty) ? 'Profile' : name.trim();
-      _subtitle =
-          (subtitle == null || subtitle.trim().isEmpty) ? role : subtitle.trim();
+      _subtitle = (subtitle == null || subtitle.trim().isEmpty)
+          ? role
+          : subtitle.trim();
+      _locationSubtitle = locationLabel ??
+          ((latitude != null && longitude != null)
+              ? '${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)}'
+              : 'Set your loading area');
     });
+
+    if (locationLabel == null && latitude != null && longitude != null) {
+      _setCityFromCoordinates(locationRole, latitude, longitude);
+    }
   }
 
   Future<void> _logout() async {
@@ -132,7 +147,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _ProfileTile(
               icon: Icons.location_on_outlined,
               title: 'Location',
-              subtitle: 'Saved on this device',
+              subtitle: _locationSubtitle,
               onTap: () => Navigator.pushNamed(context, '/location'),
             ),
             const SizedBox(height: 10),
@@ -147,6 +162,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     );
+  }
+
+  String? _cleanText(String? value) {
+    final text = value?.trim();
+    if (text == null || text.isEmpty) return null;
+    return text;
+  }
+
+  Future<void> _setCityFromCoordinates(
+    String role,
+    double latitude,
+    double longitude,
+  ) async {
+    try {
+      final place = await ApiService.reverseGeocode(
+        latitude: latitude,
+        longitude: longitude,
+      );
+      final label = _cleanText(place.shortLabel);
+      if (label == null || !mounted) return;
+      await ApiService.cacheLocation(
+        role: role,
+        latitude: latitude,
+        longitude: longitude,
+        label: label,
+      );
+      if (mounted) setState(() => _locationSubtitle = label);
+    } catch (_) {
+      // Keep cached coordinates if reverse lookup is unavailable.
+    }
   }
 }
 

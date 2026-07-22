@@ -14,6 +14,7 @@ class DriverProfile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: Optional[str] = None
+    email: Optional[str] = None
     vehicle_number: Optional[str] = None
     current_location: Optional[dict] = None
 

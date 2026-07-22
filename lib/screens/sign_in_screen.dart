@@ -10,13 +10,23 @@ class SignInScreen extends StatefulWidget {
 }
 
 class _SignInScreenState extends State<SignInScreen> {
+  final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   bool _isLoading = false;
 
   void _handleSignIn() async {
-    if (_phoneController.text.isEmpty) {
+    final email = _emailController.text.trim();
+    final phone = _phoneController.text.trim();
+    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter phone number')),
+        const SnackBar(content: Text('Please enter a valid email')),
+      );
+      return;
+    }
+    final phoneDigits = phone.replaceAll(RegExp(r'\D'), '');
+    if (phoneDigits.length < 10 || phoneDigits.length > 15) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid phone number')),
       );
       return;
     }
@@ -24,12 +34,16 @@ class _SignInScreenState extends State<SignInScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await ApiService.signIn(_phoneController.text);
+      await ApiService.signIn(email, phone: phone);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('OTP sent successfully')),
+          const SnackBar(content: Text('OTP sent to your email')),
         );
-        Navigator.pushNamed(context, '/otp', arguments: _phoneController.text);
+        Navigator.pushNamed(
+          context,
+          '/otp',
+          arguments: {'email': email, 'phone': phone},
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -60,12 +74,28 @@ class _SignInScreenState extends State<SignInScreen> {
                 style: TextStyle(color: Colors.grey, fontSize: 16)),
             const SizedBox(height: 50),
             TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
               enabled: !_isLoading,
               decoration: InputDecoration(
-                labelText: "Phone Number",
-                hintText: "Enter Phone Number",
+                labelText: "Email",
+                hintText: "Enter email address",
+                suffixIcon:
+                    const Icon(Icons.email_outlined, color: Colors.grey),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              textInputAction: TextInputAction.done,
+              enabled: !_isLoading,
+              decoration: InputDecoration(
+                labelText: "Phone number",
+                hintText: "Enter phone number",
                 suffixIcon:
                     const Icon(Icons.phone_outlined, color: Colors.grey),
                 border:
@@ -117,6 +147,7 @@ class _SignInScreenState extends State<SignInScreen> {
 
   @override
   void dispose() {
+    _emailController.dispose();
     _phoneController.dispose();
     super.dispose();
   }

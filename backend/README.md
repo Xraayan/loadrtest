@@ -50,10 +50,23 @@ Add `GEOAPIFY_API_KEY` to `backend/.env`.
 
 The mobile app calls the backend place-search API. Keep the Geoapify key on the backend; do not pass it through Flutter.
 
+### 7. Email OTP Setup
+Use Resend's free onboarding sender for local/beta email OTP. Set these in `backend/.env` or Render environment variables:
+
+```env
+RESEND_API_KEY=re_xxxxxxxxx
+RESEND_FROM_EMAIL=Acme <onboarding@resend.dev>
+EMAIL_STRICT_SEND=false
+```
+
+The free onboarding sender is limited. If Resend rejects a recipient and `EMAIL_STRICT_SEND=false`, the backend prints the OTP for local beta testing instead of failing sign-in.
+
+For production, verify a domain in Resend and use something like `LoadR <otp@yourdomain.com>`.
+
 ## API Documentation
 
 ### Authentication
-- `POST /api/auth/signin` - Send OTP to phone
+- `POST /api/auth/signin` - Send OTP to email
 - `POST /api/auth/verify-otp` - Verify OTP and get token
 - `POST /api/auth/refresh-token` - Refresh authentication token
 

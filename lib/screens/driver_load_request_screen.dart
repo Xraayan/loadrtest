@@ -67,9 +67,11 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
     final job = _job;
     if (job == null) return;
 
+    String? uid;
+    String? jobId;
     setState(() => _isAccepting = true);
     try {
-      final uid = await ApiService.getUid();
+      uid = await ApiService.getUid();
       if (uid == null) throw Exception('User not authenticated');
 
       final activeJob = await ApiService.getDriverActiveJob(uid);
@@ -77,7 +79,7 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
         throw Exception('Finish your active load before accepting another one');
       }
 
-      final jobId = '${job['job_id'] ?? job['id']}';
+      jobId = '${job['job_id'] ?? job['id']}';
       final response = await ApiService.acceptJob(uid, jobId);
       final acceptedJob = response['job'] is Map
           ? Map<String, dynamic>.from(response['job'] as Map)
@@ -96,6 +98,21 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
         arguments: activeLoad,
       );
     } catch (e) {
+      if (uid != null && jobId != null) {
+        try {
+          final activeJob = await ApiService.getDriverActiveJob(uid);
+          final activeJobId = '${activeJob?['job_id'] ?? activeJob?['id']}';
+          if (activeJob != null && activeJobId == jobId) {
+            if (!mounted) return;
+            Navigator.pushReplacementNamed(
+              context,
+              '/driver-active-trip',
+              arguments: activeJob,
+            );
+            return;
+          }
+        } catch (_) {}
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Accept failed: $e')),
@@ -142,11 +159,18 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
 
     final pickup = _placeFromJob(job, pickup: true);
     final drop = _placeFromJob(job, pickup: false);
-    final pickupPoint = LatLng(pickup.latitude, pickup.longitude);
-    final dropPoint = LatLng(drop.latitude, drop.longitude);
-    final routePoints = estimate.routePoints.isEmpty
-        ? [pickupPoint, dropPoint]
+    final savedRoutePoints = _routePointsFromJob(job);
+    final routePoints = savedRoutePoints.isNotEmpty
+        ? savedRoutePoints
         : estimate.routePoints;
+    final pickupPoint = routePoints.isEmpty
+        ? LatLng(pickup.latitude, pickup.longitude)
+        : routePoints.first;
+    final dropPoint = routePoints.isEmpty
+        ? LatLng(drop.latitude, drop.longitude)
+        : routePoints.last;
+    final cameraPoints =
+        routePoints.isEmpty ? [pickupPoint, dropPoint] : routePoints;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F7),
@@ -157,7 +181,7 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
               mapController: _mapController,
               options: MapOptions(
                 initialCameraFit: CameraFit.coordinates(
-                  coordinates: routePoints,
+                  coordinates: cameraPoints,
                   padding: EdgeInsets.fromLTRB(
                     44,
                     150,
@@ -185,13 +209,14 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
                 ),
                 PolylineLayer(
                   polylines: [
-                    Polyline(
-                      points: routePoints,
-                      color: kPrimaryOrange,
-                      strokeWidth: 6,
-                      borderColor: Colors.white,
-                      borderStrokeWidth: 3,
-                    ),
+                    if (routePoints.length >= 2)
+                      Polyline(
+                        points: routePoints,
+                        color: kPrimaryOrange,
+                        strokeWidth: 6,
+                        borderColor: Colors.white,
+                        borderStrokeWidth: 3,
+                      ),
                   ],
                 ),
                 MarkerLayer(
@@ -677,4 +702,18 @@ String _shortLocation(String value) {
       .toList();
   if (parts.isEmpty) return value;
   return parts.length <= 2 ? parts.join(', ') : parts.take(2).join(', ');
+}
+
+List<LatLng> _routePointsFromJob(Map<String, dynamic> job) {
+  final points = job['route_points'];
+  if (points is! List) return [];
+  final routePoints = points.whereType<Map>().map((point) {
+    return LatLng(
+      _asDouble(point['latitude']),
+      _asDouble(point['longitude']),
+    );
+  }).where((point) {
+    return point.latitude != 0 && point.longitude != 0;
+  }).toList();
+  return routePoints.length > 2 ? routePoints : [];
 }

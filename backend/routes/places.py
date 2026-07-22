@@ -88,6 +88,7 @@ def reverse_geocode(
         {
             "lat": str(latitude),
             "lon": str(longitude),
+            "type": "street",
             "format": "json",
         },
     )

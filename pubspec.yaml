@@ -34,6 +34,7 @@ dependencies:
   google_fonts: ^6.2.1
   http: ^1.1.0 # For API calls
   shared_preferences: ^2.2.2 # For storing auth token
+  flutter_secure_storage: ^10.3.1
   flutter_map: ^8.3.1
   latlong2: ^0.10.1
 

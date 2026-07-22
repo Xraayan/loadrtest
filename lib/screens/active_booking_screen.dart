@@ -23,6 +23,8 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
   bool _isLoading = true;
   bool _isRefreshing = false;
   bool _isCanceling = false;
+  bool _isRefreshingRoute = false;
+  DateTime? _lastRouteRefreshAt;
   StreamSubscription<Map<String, dynamic>?>? _bookingSubscription;
 
   @override
@@ -55,6 +57,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
       _booking = booking;
       _isLoading = false;
     });
+    _refreshBadRoute(booking);
     if (uid != null) _startBookingStream(uid);
   }
 
@@ -63,9 +66,13 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
     final json = prefs.getString('active_booking');
     if (json == null || json.trim().isEmpty) return null;
 
-    final decoded = jsonDecode(json);
-    if (decoded is Map) {
-      return Map<String, dynamic>.from(decoded);
+    try {
+      final decoded = jsonDecode(json);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {
+      await prefs.remove('active_booking');
     }
     return null;
   }
@@ -93,6 +100,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
 
       if (!mounted) return;
       setState(() => _booking = merged);
+      _refreshBadRoute(merged);
     } catch (e) {
       if (mounted && showErrors) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -124,6 +132,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
         final current = _booking;
         final next = current == null ? job : _mergeJobIntoBooking(current, job);
         setState(() => _booking = next);
+        _refreshBadRoute(next);
       },
       onError: (_) {
         // Cached/manual refresh keeps the screen usable if the stream drops.
@@ -136,6 +145,8 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
     Map<String, dynamic> job,
   ) {
     final driver = job['driver'];
+    final routePoints =
+        _betterRoutePoints(booking['route_points'], job['route_points']);
     return {
       ...booking,
       'status': job['status'] ?? booking['status'],
@@ -152,10 +163,68 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
       'vehicle_type': job['vehicle_type'] ?? booking['vehicle_type'],
       'amount': job['amount'] ?? booking['amount'],
       'distance_km': job['distance_km'] ?? booking['distance_km'],
-      'route_points': job['route_points'] ?? booking['route_points'],
+      if (routePoints != null) 'route_points': routePoints,
       'nearby_drivers': job['nearby_drivers'] ?? booking['nearby_drivers'],
       if (driver is Map) 'driver': Map<String, dynamic>.from(driver),
     };
+  }
+
+  Future<void> _refreshBadRoute(Map<String, dynamic>? booking) async {
+    if (_isRefreshingRoute) return;
+    if (booking == null) return;
+    final pickup = _placeFromBooking(booking, 'pickup');
+    final drop = _placeFromBooking(booking, 'dropoff');
+    if (pickup == null || drop == null) return;
+
+    final currentPoints = _routePointsFromBooking(booking);
+    if (currentPoints.length > 2) return;
+
+    final lastTry = _lastRouteRefreshAt;
+    if (lastTry != null &&
+        DateTime.now().difference(lastTry) < const Duration(seconds: 30)) {
+      return;
+    }
+    _lastRouteRefreshAt = DateTime.now();
+    _isRefreshingRoute = true;
+
+    try {
+      final estimate = await ApiService.estimateRide(
+        pickup: pickup,
+        drop: drop,
+        vehicleType: _text(booking['vehicle_type']).isEmpty
+            ? 'Tata Ace'
+            : _text(booking['vehicle_type']),
+        schedule: 'Now',
+      );
+      if (estimate.routePoints.length <= 2 || !mounted) return;
+
+      final next = {
+        ...booking,
+        'distance_km': estimate.distanceKm,
+        'route_points': estimate.routePoints
+            .map(
+              (point) => {
+                'latitude': point.latitude,
+                'longitude': point.longitude,
+              },
+            )
+            .toList(),
+      };
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('active_booking', jsonEncode(next));
+      if (mounted) setState(() => _booking = next);
+    } catch (_) {
+      // Keep markers visible without drawing a fake straight road route.
+    } finally {
+      _isRefreshingRoute = false;
+    }
+  }
+
+  Object? _betterRoutePoints(Object? current, Object? incoming) {
+    if (_routePointCount(current) > 2 && _routePointCount(incoming) <= 2) {
+      return current;
+    }
+    return incoming ?? current;
   }
 
   @override
@@ -190,7 +259,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
               controller: _mapController,
               pickup: pickup,
               drop: drop,
-              routePoints: _routePointsFromBooking(booking, pickup, drop),
+              routePoints: _routePointsFromBooking(booking),
               driverPoint: _driverPointFromBooking(booking),
               nearbyDrivers: _nearbyDriverPoints(booking),
               onZoomIn: () => _zoomBy(1),
@@ -287,7 +356,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
   }
 }
 
-class _RouteMap extends StatelessWidget {
+class _RouteMap extends StatefulWidget {
   final MapController controller;
   final PlaceSuggestion pickup;
   final PlaceSuggestion drop;
@@ -309,15 +378,32 @@ class _RouteMap extends StatelessWidget {
   });
 
   @override
+  State<_RouteMap> createState() => _RouteMapState();
+}
+
+class _RouteMapState extends State<_RouteMap> {
+  double _zoom = 13;
+
+  @override
   Widget build(BuildContext context) {
-    final pickupPoint = LatLng(pickup.latitude, pickup.longitude);
-    final dropPoint = LatLng(drop.latitude, drop.longitude);
-    final mapStart = driverPoint ?? pickupPoint;
-    final cameraPoints = [mapStart, ...routePoints, dropPoint];
+    final pickupPoint = widget.routePoints.isEmpty
+        ? LatLng(widget.pickup.latitude, widget.pickup.longitude)
+        : widget.routePoints.first;
+    final dropPoint = widget.routePoints.isEmpty
+        ? LatLng(widget.drop.latitude, widget.drop.longitude)
+        : widget.routePoints.last;
+    final mapStart = widget.driverPoint ?? pickupPoint;
+    final cameraPoints = [mapStart, ...widget.routePoints, dropPoint];
+    final markerSize = _markerSize(_zoom);
+    final driverSize = _driverSize(_zoom);
+    final nearbyDrivers = _zoom < 11
+        ? const <LatLng>[]
+        : widget.nearbyDrivers
+            .take(_zoom < 13 ? 3 : widget.nearbyDrivers.length);
     return Stack(
       children: [
         FlutterMap(
-          mapController: controller,
+          mapController: widget.controller,
           options: MapOptions(
             initialCameraFit: CameraFit.coordinates(
               coordinates: cameraPoints,
@@ -331,6 +417,10 @@ class _RouteMap extends StatelessWidget {
             ),
             minZoom: 4,
             maxZoom: 20,
+            onPositionChanged: (camera, _) {
+              if ((camera.zoom - _zoom).abs() < 0.1) return;
+              setState(() => _zoom = camera.zoom);
+            },
             interactionOptions: const InteractionOptions(
               flags: InteractiveFlag.drag |
                   InteractiveFlag.pinchZoom |
@@ -348,50 +438,56 @@ class _RouteMap extends StatelessWidget {
             ),
             PolylineLayer(
               polylines: [
-                Polyline(
-                  points: routePoints,
-                  color: kPrimaryOrange,
-                  strokeWidth: 6,
-                  borderColor: Colors.white,
-                  borderStrokeWidth: 3,
-                ),
+                if (widget.routePoints.length >= 2)
+                  Polyline(
+                    points: widget.routePoints,
+                    color: kPrimaryOrange,
+                    strokeWidth: _zoom < 11 ? 4 : 6,
+                    borderColor: Colors.white,
+                    borderStrokeWidth: _zoom < 11 ? 2 : 3,
+                  ),
               ],
             ),
             MarkerLayer(
               markers: [
                 Marker(
                   point: pickupPoint,
-                  width: 46,
-                  height: 46,
-                  child: const _RouteMarker(
+                  width: markerSize,
+                  height: markerSize,
+                  child: _RouteMarker(
                     icon: Icons.trip_origin,
                     backgroundColor: Colors.white,
                     foregroundColor: kPrimaryOrange,
+                    iconSize: markerSize * 0.48,
                   ),
                 ),
                 Marker(
                   point: dropPoint,
-                  width: 46,
-                  height: 46,
-                  child: const _RouteMarker(
+                  width: markerSize,
+                  height: markerSize,
+                  child: _RouteMarker(
                     icon: Icons.stop,
                     backgroundColor: Colors.black87,
                     foregroundColor: Colors.white,
+                    iconSize: markerSize * 0.48,
                   ),
                 ),
                 for (final point in nearbyDrivers)
                   Marker(
                     point: point,
-                    width: 38,
-                    height: 38,
-                    child: const _DriverMapMarker(nearby: true),
+                    width: driverSize,
+                    height: driverSize,
+                    child: _DriverMapMarker(
+                      nearby: true,
+                      iconSize: driverSize * 0.48,
+                    ),
                   ),
-                if (driverPoint != null)
+                if (widget.driverPoint != null)
                   Marker(
-                    point: driverPoint!,
-                    width: 44,
-                    height: 44,
-                    child: const _DriverMapMarker(),
+                    point: widget.driverPoint!,
+                    width: markerSize,
+                    height: markerSize,
+                    child: _DriverMapMarker(iconSize: markerSize * 0.5),
                   ),
               ],
             ),
@@ -408,12 +504,25 @@ class _RouteMap extends StatelessWidget {
           right: 16,
           top: MediaQuery.paddingOf(context).top + 88,
           child: _MapZoomControls(
-            onZoomIn: onZoomIn,
-            onZoomOut: onZoomOut,
+            onZoomIn: widget.onZoomIn,
+            onZoomOut: widget.onZoomOut,
           ),
         ),
       ],
     );
+  }
+
+  double _markerSize(double zoom) {
+    if (zoom < 10) return 26;
+    if (zoom < 13) return 34;
+    if (zoom > 16) return 52;
+    return 44;
+  }
+
+  double _driverSize(double zoom) {
+    if (zoom < 12) return 22;
+    if (zoom > 16) return 40;
+    return 32;
   }
 }
 
@@ -934,11 +1043,13 @@ class _RouteMarker extends StatelessWidget {
   final IconData icon;
   final Color backgroundColor;
   final Color foregroundColor;
+  final double iconSize;
 
   const _RouteMarker({
     required this.icon,
     required this.backgroundColor,
     required this.foregroundColor,
+    this.iconSize = 22,
   });
 
   @override
@@ -955,15 +1066,19 @@ class _RouteMarker extends StatelessWidget {
           ),
         ],
       ),
-      child: Icon(icon, color: foregroundColor, size: 22),
+      child: Icon(icon, color: foregroundColor, size: iconSize),
     );
   }
 }
 
 class _DriverMapMarker extends StatelessWidget {
   final bool nearby;
+  final double iconSize;
 
-  const _DriverMapMarker({this.nearby = false});
+  const _DriverMapMarker({
+    this.nearby = false,
+    this.iconSize = 22,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -979,7 +1094,7 @@ class _DriverMapMarker extends StatelessWidget {
       child: Icon(
         Icons.local_shipping,
         color: nearby ? kPrimaryOrange : Colors.white,
-        size: nearby ? 19 : 22,
+        size: nearby ? iconSize * 0.9 : iconSize,
       ),
     );
   }
@@ -1117,11 +1232,7 @@ PlaceSuggestion? _placeFromBooking(
   );
 }
 
-List<LatLng> _routePointsFromBooking(
-  Map<String, dynamic> booking,
-  PlaceSuggestion pickup,
-  PlaceSuggestion drop,
-) {
+List<LatLng> _routePointsFromBooking(Map<String, dynamic> booking) {
   final points = booking['route_points'];
   if (points is List) {
     final routePoints = points.whereType<Map>().map((point) {
@@ -1133,13 +1244,19 @@ List<LatLng> _routePointsFromBooking(
     }).where((point) {
       return point.latitude != 0 && point.longitude != 0;
     }).toList();
-    if (routePoints.isNotEmpty) return routePoints;
+    if (routePoints.length > 2) return routePoints;
   }
 
-  return [
-    LatLng(pickup.latitude, pickup.longitude),
-    LatLng(drop.latitude, drop.longitude),
-  ];
+  return [];
+}
+
+int _routePointCount(Object? value) {
+  if (value is! List) return 0;
+  return value.whereType<Map>().where((point) {
+    final latitude = _asDouble(point['latitude']);
+    final longitude = _asDouble(point['longitude']);
+    return latitude != 0 && longitude != 0;
+  }).length;
 }
 
 LatLng? _driverPointFromBooking(Map<String, dynamic> booking) {

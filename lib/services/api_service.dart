@@ -1,17 +1,39 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:loadr/models/place_suggestion.dart';
 import 'package:loadr/models/ride_quote.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+class ApiUnauthorizedException implements Exception {
+  const ApiUnauthorizedException();
+}
+
 class ApiService {
   static const String _apiBaseUrlOverride =
       String.fromEnvironment('API_BASE_URL');
+  static const String _authTokenKey = 'auth_token';
+  static const _secureStorage = FlutterSecureStorage();
+  static bool _isLoggingOut = false;
+
+  static bool get isLoggingOut => _isLoggingOut;
 
   static String get baseUrl {
-    if (_apiBaseUrlOverride.trim().isNotEmpty) {
-      return _apiBaseUrlOverride.trim().replaceFirst(RegExp(r'/$'), '');
+    final configuredUrl = _apiBaseUrlOverride.trim();
+    if (configuredUrl.isNotEmpty) {
+      final uri = Uri.tryParse(configuredUrl);
+      if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+        throw StateError('API_BASE_URL must be an absolute URL');
+      }
+      if (kReleaseMode && uri.scheme != 'https') {
+        throw StateError('A release build requires an HTTPS API_BASE_URL');
+      }
+      return configuredUrl.replaceFirst(RegExp(r'/$'), '');
+    }
+
+    if (kReleaseMode) {
+      throw StateError('A release build requires API_BASE_URL');
     }
 
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
@@ -54,16 +76,23 @@ class ApiService {
     );
   }
 
-  // Sign in with phone number
-  static Future<Map<String, dynamic>> signIn(String phone) async {
+  // Sign in with email OTP
+  static Future<Map<String, dynamic>> signIn(
+    String email, {
+    String? phone,
+  }) async {
     try {
       final response = await http
           .post(
             Uri.parse('$baseUrl/auth/signin'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'phone': phone}),
+            body: jsonEncode({
+              'email': email,
+              if (phone != null && phone.trim().isNotEmpty)
+                'phone': phone.trim(),
+            }),
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 35));
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -77,23 +106,44 @@ class ApiService {
 
   // Verify OTP and get token
   static Future<Map<String, dynamic>> verifyOtp(
-      String phone, String otp) async {
+    String email,
+    String otp, {
+    String? phone,
+  }) async {
     try {
       final response = await http
           .post(
             Uri.parse('$baseUrl/auth/verify-otp'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'phone': phone, 'otp': otp}),
+            body: jsonEncode({
+              'email': email,
+              'otp': otp,
+              if (phone != null && phone.trim().isNotEmpty)
+                'phone': phone.trim(),
+            }),
           )
           .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        // Store token locally
+        if (data is! Map) throw Exception('Invalid sign-in response');
+        final authData = Map<String, dynamic>.from(data);
+        final token = '${authData['token'] ?? ''}'.trim();
+        final uid = '${authData['uid'] ?? ''}'.trim();
+        if (token.isEmpty || uid.isEmpty) {
+          throw Exception('Invalid sign-in response');
+        }
+
+        _isLoggingOut = false;
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('auth_token', data['token']);
-        await prefs.setString('uid', data['uid']);
-        return data;
+        await _secureStorage.write(key: _authTokenKey, value: token);
+        await prefs.remove(_authTokenKey);
+        await prefs.setString('uid', uid);
+        await prefs.setString('auth_email', email);
+        if (phone != null && phone.trim().isNotEmpty) {
+          await prefs.setString('auth_phone', phone.trim());
+        }
+        return authData;
       } else {
         throw Exception(_errorMessage(
           response.body,
@@ -159,10 +209,15 @@ class ApiService {
       }
 
       if (response.statusCode == 404) return null;
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        throw const ApiUnauthorizedException();
+      }
       throw Exception(_errorMessage(
         response.body,
         fallback: 'Failed to get user profile',
       ));
+    } on ApiUnauthorizedException {
+      rethrow;
     } catch (e) {
       throw Exception('Error: $e');
     }
@@ -178,6 +233,8 @@ class ApiService {
 
     final name = '${profile['name'] ?? ''}'.trim();
     final email = '${profile['email'] ?? ''}'.trim();
+    final phone = '${profile['phone'] ?? ''}'.trim();
+    if (phone.isNotEmpty) await prefs.setString('auth_phone', phone);
     if (role == 'user') {
       if (name.isNotEmpty) await prefs.setString('customer_name', name);
       if (email.isNotEmpty) await prefs.setString('customer_email', email);
@@ -221,7 +278,9 @@ class ApiService {
     if (role == null || role.isEmpty) return '/role-selection';
 
     if (role == 'user') {
-      final hasProfile = (prefs.getString('customer_name') ?? '').isNotEmpty;
+      final hasProfile =
+          (prefs.getString('customer_name') ?? '').isNotEmpty &&
+              !(prefs.getBool('customer_profile_sync_pending') ?? false);
       return hasProfile ? '/customer-home' : '/customer-details';
     }
 
@@ -301,8 +360,32 @@ class ApiService {
 
   // Get stored auth token
   static Future<String?> getAuthToken() async {
+    final storedToken = await _secureStorage.read(key: _authTokenKey);
+    if (storedToken != null && storedToken.trim().isNotEmpty) {
+      return storedToken;
+    }
+
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('auth_token');
+    final legacyToken = prefs.getString(_authTokenKey);
+    if (legacyToken == null || legacyToken.trim().isEmpty) return null;
+
+    await _secureStorage.write(key: _authTokenKey, value: legacyToken);
+    await prefs.remove(_authTokenKey);
+    return legacyToken;
+  }
+
+  static Future<String?> getAuthEmail() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('auth_email') ?? prefs.getString('customer_email');
+  }
+
+  static Future<String> _requireAuthToken() async {
+    if (_isLoggingOut) throw Exception('Not signed in');
+    final token = await getAuthToken();
+    if (token == null || token.trim().isEmpty) {
+      throw Exception('Not signed in');
+    }
+    return token;
   }
 
   // Get driver profile
@@ -333,21 +416,23 @@ class ApiService {
     String uid,
     Map<String, dynamic> data,
   ) async {
-    await cacheDriverProfile(data);
-    final token = await getAuthToken();
+    final token = await _requireAuthToken();
 
-    final response = await http.put(
-      Uri.parse('$baseUrl/drivers/$uid'),
-      headers: {
-        'Content-Type': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode(data),
-    );
+    final response = await http
+        .put(
+          Uri.parse('$baseUrl/drivers/$uid'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode(data),
+        )
+        .timeout(const Duration(seconds: 10));
 
     if (response.statusCode != 200) {
       throw Exception(response.body);
     }
+    await cacheDriverProfile(data);
   }
 
   static Future<void> cacheDriverProfile(Map<String, dynamic> data) async {
@@ -428,13 +513,16 @@ class ApiService {
     String? district,
     String? vehicleType,
   }) async {
+    if (_isLoggingOut) return [];
+    final token = await getAuthToken();
+    if (token == null || token.trim().isEmpty) return [];
+
     final cacheKey = 'jobs_${state ?? ''}_${city ?? ''}_${district ?? ''}_'
         '${vehicleType ?? ''}';
     final cached = await _readJsonCache(cacheKey, const Duration(seconds: 20));
     if (cached is List) return cached;
 
     try {
-      final token = await getAuthToken();
       final query = <String, String>{
         if (state != null && state.trim().isNotEmpty) 'state': state.trim(),
         if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
@@ -448,7 +536,7 @@ class ApiService {
         uri,
         headers: {
           'Content-Type': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
+          'Authorization': 'Bearer $token',
         },
       ).timeout(const Duration(seconds: 10));
 
@@ -606,7 +694,6 @@ class ApiService {
         final job = data is Map ? data['job'] : null;
         if (job is Map) {
           final activeJob = Map<String, dynamic>.from(job);
-          await cacheCustomerActiveBooking(activeJob);
           yield activeJob;
         } else {
           await clearCustomerActiveBooking();
@@ -740,13 +827,14 @@ class ApiService {
     required String vehicleType,
     required String schedule,
   }) async {
-    final cacheKey = 'estimate_v2_${pickup.latitude.toStringAsFixed(5)}_'
+    final cacheKey = 'estimate_v5_${pickup.latitude.toStringAsFixed(5)}_'
         '${pickup.longitude.toStringAsFixed(5)}_'
         '${drop.latitude.toStringAsFixed(5)}_'
         '${drop.longitude.toStringAsFixed(5)}_${vehicleType}_$schedule';
     final cached = await _readJsonCache(cacheKey, const Duration(minutes: 15));
     if (cached is Map) {
-      return RideEstimate.fromJson(Map<String, dynamic>.from(cached));
+      final estimate = RideEstimate.fromJson(Map<String, dynamic>.from(cached));
+      if (estimate.routePoints.length > 2) return estimate;
     }
 
     try {
@@ -765,7 +853,7 @@ class ApiService {
               'schedule': schedule,
             }),
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 25));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -784,7 +872,8 @@ class ApiService {
     } catch (e) {
       final stale = await _readJsonCache(cacheKey, const Duration(days: 1));
       if (stale is Map) {
-        return RideEstimate.fromJson(Map<String, dynamic>.from(stale));
+        final estimate = RideEstimate.fromJson(Map<String, dynamic>.from(stale));
+        if (estimate.routePoints.length > 2) return estimate;
       }
       throw Exception('Error: $e');
     }
@@ -803,12 +892,12 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getDriverLocation(String uid) async {
     try {
-      final token = await getAuthToken();
+      final token = await _requireAuthToken();
       final response = await http.get(
         Uri.parse('$baseUrl/location/$uid'),
         headers: {
           'Content-Type': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
+          'Authorization': 'Bearer $token',
         },
       ).timeout(const Duration(seconds: 10));
 
@@ -832,6 +921,7 @@ class ApiService {
   }
 
   static Future<void> updateDriverStatus(String uid, bool isActive) async {
+    if (_isLoggingOut) return;
     final prefs = await SharedPreferences.getInstance();
     var latitude = prefs.getDouble('driver_latitude');
     var longitude = prefs.getDouble('driver_longitude');
@@ -864,7 +954,7 @@ class ApiService {
           'Content-Type': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
         },
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -891,12 +981,12 @@ class ApiService {
 
   static Future<Map<String, dynamic>?> getDriverActiveJob(String uid) async {
     try {
-      final token = await getAuthToken();
+      final token = await _requireAuthToken();
       final response = await http.get(
         Uri.parse('$baseUrl/jobs/driver/$uid/active'),
         headers: {
           'Content-Type': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
+          'Authorization': 'Bearer $token',
         },
       ).timeout(const Duration(seconds: 10));
 
@@ -955,6 +1045,7 @@ class ApiService {
   // Update location
   static Future<void> updateLocation(
       String uid, Map<String, dynamic> location) async {
+    if (_isLoggingOut) return;
     await cacheLocation(
       role: 'driver',
       latitude: location['latitude'],
@@ -963,13 +1054,13 @@ class ApiService {
     );
 
     try {
-      final token = await getAuthToken();
+      final token = await _requireAuthToken();
       final response = await http
           .post(
             Uri.parse('$baseUrl/location/update?uid=$uid'),
             headers: {
               'Content-Type': 'application/json',
-              if (token != null) 'Authorization': 'Bearer $token',
+              'Authorization': 'Bearer $token',
             },
             body: jsonEncode(location),
           )
@@ -1112,30 +1203,10 @@ class ApiService {
 
   // Logout
   static Future<void> logout() async {
+    _isLoggingOut = true;
+    await _secureStorage.delete(key: _authTokenKey);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth_token');
-    await prefs.remove('uid');
-    await prefs.remove('selected_role');
-    await prefs.remove('role_sync_pending');
-    await prefs.remove('customer_name');
-    await prefs.remove('customer_email');
-    await prefs.remove('customer_latitude');
-    await prefs.remove('customer_longitude');
-    await prefs.remove('customer_location_label');
-    await prefs.remove('customer_profile_sync_pending');
-    await prefs.remove('active_booking');
-    await prefs.remove('last_latitude');
-    await prefs.remove('last_longitude');
-    await prefs.remove('user_latitude');
-    await prefs.remove('user_longitude');
-    await prefs.remove('user_location_label');
-    await prefs.remove('driver_name');
-    await prefs.remove('driver_vehicle_number');
-    await prefs.remove('driver_latitude');
-    await prefs.remove('driver_longitude');
-    await prefs.remove('driver_location_label');
-    await prefs.remove('driver_is_active');
-    await prefs.remove('driver_active_job');
+    await prefs.clear();
   }
 
   static Future<String?> getUid() async {

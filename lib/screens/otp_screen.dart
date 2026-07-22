@@ -54,17 +54,17 @@ class _OTPScreenState extends State<OTPScreen> {
       return;
     }
 
-    final phone = _phone;
-    if (phone == null) {
+    final email = _email;
+    if (email == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Phone number not found')),
+        const SnackBar(content: Text('Email not found')),
       );
       return;
     }
 
     setState(() => _isLoading = true);
     try {
-      await ApiService.verifyOtp(phone, otp);
+      await ApiService.verifyOtp(email, otp, phone: _phone);
       final nextRoute = await ApiService.resolveRouteAfterAuth();
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(
@@ -85,12 +85,12 @@ class _OTPScreenState extends State<OTPScreen> {
   }
 
   Future<void> _resendOtp() async {
-    final phone = _phone;
-    if (phone == null || _secondsLeft > 0) return;
+    final email = _email;
+    if (email == null || _secondsLeft > 0) return;
 
     setState(() => _isResending = true);
     try {
-      await ApiService.signIn(phone);
+      await ApiService.signIn(email, phone: _phone);
       if (!mounted) return;
       _otpController.clear();
       _otpFocusNode.requestFocus();
@@ -108,13 +108,28 @@ class _OTPScreenState extends State<OTPScreen> {
     }
   }
 
-  String? get _phone => ModalRoute.of(context)?.settings.arguments as String?;
+  String? get _email {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is String) return args;
+    if (args is Map) {
+      final email = '${args['email'] ?? ''}'.trim();
+      return email.isEmpty ? null : email;
+    }
+    return null;
+  }
 
-  String get _maskedPhone {
-    final phone = (_phone ?? '').replaceAll(RegExp(r'\D'), '');
-    if (phone.length <= 4) return '+91 ****';
-    final lastFour = phone.substring(phone.length - 4);
-    return '+91******$lastFour';
+  String? get _phone {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is! Map) return null;
+    final phone = '${args['phone'] ?? ''}'.trim();
+    return phone.isEmpty ? null : phone;
+  }
+
+  String get _maskedEmail {
+    final email = _email ?? '';
+    final at = email.indexOf('@');
+    if (at <= 1) return email;
+    return '${email[0]}***${email.substring(at)}';
   }
 
   @override
@@ -151,7 +166,8 @@ class _OTPScreenState extends State<OTPScreen> {
               alignment: Alignment.centerLeft,
               child: IconButton(
                 tooltip: 'Back',
-                onPressed: _isLoading ? null : () => Navigator.maybePop(context),
+                onPressed:
+                    _isLoading ? null : () => Navigator.maybePop(context),
                 icon: const Icon(Icons.arrow_back),
               ),
             ),
@@ -181,7 +197,7 @@ class _OTPScreenState extends State<OTPScreen> {
             ),
             const SizedBox(height: 10),
             Text(
-              'We sent a 4 digit code to $_maskedPhone',
+              'We sent a 4 digit code to $_maskedEmail',
               style: const TextStyle(
                 color: Colors.black54,
                 fontSize: 15,
@@ -249,10 +265,9 @@ class _OTPScreenState extends State<OTPScreen> {
             const SizedBox(height: 22),
             Center(
               child: TextButton(
-                onPressed:
-                    (_secondsLeft == 0 && !_isResending && !_isLoading)
-                        ? _resendOtp
-                        : null,
+                onPressed: (_secondsLeft == 0 && !_isResending && !_isLoading)
+                    ? _resendOtp
+                    : null,
                 child: _isResending
                     ? const SizedBox(
                         width: 18,

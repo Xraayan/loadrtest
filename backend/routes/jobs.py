@@ -1,12 +1,13 @@
+import asyncio
 from datetime import datetime, timezone
 from json import dumps
-from time import sleep
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from dependencies import CurrentUser, get_current_user, require_current_user_uid
 from role_profiles import get_role_profile
@@ -46,6 +47,22 @@ class JobCreate(BaseModel):
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _notify_job_accepted(uid: str, title: str, created_at: str) -> None:
+    try:
+        get_supabase().table("notifications").insert(
+            {
+                "user_uid": uid,
+                "title": "Trip accepted",
+                "message": f"You accepted {title}.",
+                "type": "trip",
+                "read": False,
+                "created_at": created_at,
+            }
+        ).execute()
+    except Exception as error:
+        print(f"Could not create trip acceptance notification: {error}")
 
 
 def _matches_filter(value: Optional[str], expected: Optional[str]) -> bool:
@@ -258,8 +275,8 @@ def create_job(
             "title": request.title,
             "pickup_location": request.pickup_location,
             "dropoff_location": request.dropoff_location,
-            "pickup_coords": request.pickup_coords,
-            "dropoff_coords": request.dropoff_coords,
+            "pickup_coords": route_points[0],
+            "dropoff_coords": route_points[-1],
             "state": metadata["state"],
             "city": metadata["city"],
             "district": metadata["district"],
@@ -304,38 +321,48 @@ def get_active_customer_job(
     """Get the customer's latest open or assigned job."""
     require_current_user_uid(uid, current_user)
     try:
-        job = _active_customer_job(uid)
-        return {"job": _job_with_driver(job) if job else None}
+        return _active_customer_payload(uid)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
+def _active_customer_payload(uid: str) -> dict:
+    job = _active_customer_job(uid)
+    return {"job": _job_with_driver(job) if job else None}
+
+
 @router.get("/customer/{uid}/active/stream")
-def stream_active_customer_job(
+async def stream_active_customer_job(
+    request: Request,
     uid: str,
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """Push customer job changes to the app without client-side polling."""
     require_current_user_uid(uid, current_user)
 
-    def events():
+    async def events():
         last_payload = ""
-        while True:
+        while not await request.is_disconnected():
             try:
-                job = _active_customer_job(uid)
                 payload = dumps(
-                    {"job": _job_with_driver(job) if job else None},
+                    await run_in_threadpool(_active_customer_payload, uid),
                     default=str,
                     sort_keys=True,
                 )
                 if payload != last_payload:
                     yield f"data: {payload}\n\n"
                     last_payload = payload
+            except asyncio.CancelledError:
+                return
             except Exception:
                 yield 'event: error\ndata: {"message":"stream unavailable"}\n\n'
-            sleep(2)
+            await asyncio.sleep(2)
 
-    return StreamingResponse(events(), media_type="text/event-stream")
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @router.get("/{job_id}")
@@ -429,12 +456,24 @@ def cancel_job(job_id: str, current_user: CurrentUser = Depends(get_current_user
 def accept_job(
     job_id: str,
     uid: str,
+    background_tasks: BackgroundTasks,
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """Accept an open job and create a trip for the driver."""
     require_current_user_uid(uid, current_user)
     try:
-        if _active_assignment_for_driver(uid):
+        active_assignment = _active_assignment_for_driver(uid)
+        if active_assignment:
+            active_job = active_assignment.get("job") or {}
+            if active_job.get("job_id") == job_id:
+                active_trip = active_assignment.get("trip") or {}
+                return {
+                    "message": "Job already accepted",
+                    "job_id": job_id,
+                    "trip_id": active_trip.get("trip_id") or active_job.get("assigned_trip_id"),
+                    "job": active_job,
+                    "trip": active_trip,
+                }
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Complete your active job before accepting another load",
@@ -498,16 +537,12 @@ def accept_job(
         }
         trip = get_supabase().table("trips").insert(trip_data).execute().data[0]
 
-        get_supabase().table("notifications").insert(
-            {
-                "user_uid": uid,
-                "title": "Trip accepted",
-                "message": f"You accepted {job.get('title', 'a job')}.",
-                "type": "trip",
-                "read": False,
-                "created_at": now,
-            }
-        ).execute()
+        background_tasks.add_task(
+            _notify_job_accepted,
+            uid,
+            job.get("title", "a job"),
+            now,
+        )
 
         return {
             "message": "Job accepted",

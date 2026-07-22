@@ -12,13 +12,27 @@ class DriverDetailsScreen extends StatefulWidget {
 class _DriverDetailsScreenState extends State<DriverDetailsScreen> {
   final _formKey = GlobalKey<FormState>();
   final _driverNameController = TextEditingController();
+  final _emailController = TextEditingController();
   final _vehicleNumberController = TextEditingController();
 
   bool _isLoading = false;
 
   @override
+  void initState() {
+    super.initState();
+    _prefillEmail();
+  }
+
+  Future<void> _prefillEmail() async {
+    final email = await ApiService.getAuthEmail();
+    if (!mounted || email == null || email.trim().isEmpty) return;
+    _emailController.text = email.trim();
+  }
+
+  @override
   void dispose() {
     _driverNameController.dispose();
+    _emailController.dispose();
     _vehicleNumberController.dispose();
     super.dispose();
   }
@@ -41,6 +55,7 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> {
         uid,
         {
           "name": _driverNameController.text.trim(),
+          "email": _emailController.text.trim(),
           "vehicle_number": _vehicleNumberController.text.trim().toUpperCase(),
         },
       );
@@ -170,6 +185,22 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> {
                 }
                 if (value.trim().length < 3) {
                   return 'Name must be at least 3 characters';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 20),
+            _buildTextField(
+              controller: _emailController,
+              label: 'Email Address',
+              hint: 'Enter email address',
+              icon: Icons.email_outlined,
+              keyboardType: TextInputType.emailAddress,
+              validator: (value) {
+                final text = value?.trim() ?? '';
+                if (text.isEmpty) return 'Please enter your email';
+                if (!text.contains('@') || !text.contains('.')) {
+                  return 'Please enter a valid email';
                 }
                 return null;
               },

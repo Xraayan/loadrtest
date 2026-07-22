@@ -27,12 +27,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       final prefs = await SharedPreferences.getInstance();
       final name = prefs.getString('customer_name');
       final activeBookingJson = prefs.getString('active_booking');
-      Map<String, dynamic>? activeBooking;
-      if (activeBookingJson != null && activeBookingJson.trim().isNotEmpty) {
+    Map<String, dynamic>? activeBooking;
+    if (activeBookingJson != null && activeBookingJson.trim().isNotEmpty) {
+      try {
         final decoded = jsonDecode(activeBookingJson);
         if (decoded is Map) {
           activeBooking = Map<String, dynamic>.from(decoded);
         }
+      } catch (_) {
+        await prefs.remove('active_booking');
+      }
       }
 
       if (!mounted) return;

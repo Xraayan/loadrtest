@@ -33,17 +33,18 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
   Future<void> _loadVehicles() async {
     try {
       final vehicleList = await ApiService.getVehicles();
+      if (!mounted) return;
       setState(() {
         if (vehicleList.isEmpty) {
           vehicles = List<Map<String, dynamic>>.from(_fallbackVehicles);
         } else {
           vehicles = vehicleList
+              .whereType<Map>()
               .map((v) => {
                     "name": v['type'] ?? v['name'] ?? 'Unknown',
                     "color": "0xFFFF7043",
                   })
-              .toList()
-              .cast<Map<String, dynamic>>();
+              .toList();
         }
         _isLoading = false;
       });

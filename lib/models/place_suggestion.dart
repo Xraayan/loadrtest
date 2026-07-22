@@ -25,4 +25,15 @@ class PlaceSuggestion {
       state: '${json['state'] ?? ''}',
     );
   }
+
+  String get shortLabel {
+    final cityName = city.trim().isNotEmpty ? city.trim() : district.trim();
+    final stateName = state.trim();
+    if (cityName.isEmpty) return displayName.trim();
+    if (stateName.isEmpty ||
+        cityName.toLowerCase() == stateName.toLowerCase()) {
+      return cityName;
+    }
+    return '$cityName, $stateName';
+  }
 }

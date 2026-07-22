@@ -55,6 +55,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
       return;
     }
 
+    if (!mounted) return;
     setState(() => _selectedDocument = pickedFile);
   }
 

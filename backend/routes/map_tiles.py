@@ -12,6 +12,11 @@ router = APIRouter()
 _MAP_STYLE = "osm-bright-smooth"
 _CACHE_TTL_SECONDS = 60 * 60 * 24
 _MAX_CACHE_ITEMS = 1200
+_EMPTY_PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
+    b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+)
 _tile_cache: dict[tuple[str, bool, int, int, int], tuple[float, bytes]] = {}
 _tile_cache_lock = Lock()
 
@@ -88,12 +93,16 @@ def _get_map_tile(z: int, x: int, y: int, *, retina: bool):
         with urlopen(request, timeout=8) as tile_response:
             content = tile_response.read()
         _store_tile(cache_key, content)
+    except TimeoutError:
+        return _tile_response(_EMPTY_PNG, max_age=60)
     except HTTPError as exc:
         raise HTTPException(
             status_code=exc.code,
             detail="Map tile request failed",
         ) from exc
     except URLError as exc:
+        if isinstance(exc.reason, TimeoutError):
+            return _tile_response(_EMPTY_PNG, max_age=60)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Map tile server unavailable",
@@ -102,11 +111,11 @@ def _get_map_tile(z: int, x: int, y: int, *, retina: bool):
     return _tile_response(content)
 
 
-def _tile_response(content: bytes) -> Response:
+def _tile_response(content: bytes, *, max_age: int = 86400) -> Response:
     return Response(
         content=content,
         media_type="image/png",
         headers={
-            "Cache-Control": "public, max-age=86400",
+            "Cache-Control": f"public, max-age={max_age}",
         },
     )

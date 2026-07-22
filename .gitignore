@@ -47,6 +47,8 @@ app.*.map.json
 
 # Local project notes and setup-only backend SQL
 /backend/context.md
+/backend/context*/
 /backend/SUPABASE_SETUP.md
 /backend/*.sql
+/backend/schema/
 /backend/.env

@@ -145,19 +145,26 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
 
     final pickup = _placeFromJob(job, pickup: true);
     final drop = _placeFromJob(job, pickup: false);
-    final pickupPoint = LatLng(pickup.latitude, pickup.longitude);
-    final dropPoint = LatLng(drop.latitude, drop.longitude);
+    final rawPickupPoint = LatLng(pickup.latitude, pickup.longitude);
+    final rawDropPoint = LatLng(drop.latitude, drop.longitude);
     final pickedUp = _isPickedUp(job);
-    final loadRoutePoints = estimate.routePoints.isEmpty
-        ? [pickedUp ? currentPoint : pickupPoint, dropPoint]
+    final savedLoadRoutePoints = _routePointsFromJob(job);
+    final loadRoutePoints = !pickedUp && savedLoadRoutePoints.isNotEmpty
+        ? savedLoadRoutePoints
         : estimate.routePoints;
-    final approachRoutePoints = approachEstimate.routePoints.isEmpty
-        ? [currentPoint, pickedUp ? dropPoint : pickupPoint]
-        : [currentPoint, ...approachEstimate.routePoints.skip(1)];
+    final approachRoutePoints = approachEstimate.routePoints;
+    final pickupPoint = approachRoutePoints.isEmpty
+        ? (loadRoutePoints.isEmpty ? rawPickupPoint : loadRoutePoints.first)
+        : approachRoutePoints.last;
+    final dropPoint =
+        loadRoutePoints.isEmpty ? rawDropPoint : loadRoutePoints.last;
     final activeRoutePoints = pickedUp ? loadRoutePoints : approachRoutePoints;
-    final cameraPoints = pickedUp
+    final routedCameraPoints = pickedUp
         ? activeRoutePoints
         : [...approachRoutePoints, ...loadRoutePoints];
+    final cameraPoints = routedCameraPoints.isEmpty
+        ? [currentPoint, pickupPoint, dropPoint]
+        : routedCameraPoints;
     final distanceToPickupKm = _distanceKm(currentPoint, pickupPoint);
     final distanceToDropKm = _distanceKm(currentPoint, dropPoint);
     final canConfirmPickup = !pickedUp &&
@@ -202,7 +209,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
                 ),
                 PolylineLayer(
                   polylines: [
-                    if (!pickedUp)
+                    if (!pickedUp && approachRoutePoints.length >= 2)
                       Polyline(
                         points: approachRoutePoints,
                         color: const Color(0xFF333333),
@@ -210,13 +217,16 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
                         borderColor: Colors.white,
                         borderStrokeWidth: 3,
                       ),
-                    Polyline(
-                      points: pickedUp ? activeRoutePoints : loadRoutePoints,
-                      color: kPrimaryOrange,
-                      strokeWidth: 6,
-                      borderColor: Colors.white,
-                      borderStrokeWidth: 3,
-                    ),
+                    if ((pickedUp ? activeRoutePoints : loadRoutePoints)
+                            .length >=
+                        2)
+                      Polyline(
+                        points: pickedUp ? activeRoutePoints : loadRoutePoints,
+                        color: kPrimaryOrange,
+                        strokeWidth: 6,
+                        borderColor: Colors.white,
+                        borderStrokeWidth: 3,
+                      ),
                   ],
                 ),
                 MarkerLayer(
@@ -942,4 +952,18 @@ String _shortLocation(String value) {
       .toList();
   if (parts.isEmpty) return value;
   return parts.first;
+}
+
+List<LatLng> _routePointsFromJob(Map<String, dynamic> job) {
+  final points = job['route_points'];
+  if (points is! List) return [];
+  final routePoints = points.whereType<Map>().map((point) {
+    return LatLng(
+      _asDouble(point['latitude']),
+      _asDouble(point['longitude']),
+    );
+  }).where((point) {
+    return point.latitude != 0 && point.longitude != 0;
+  }).toList();
+  return routePoints.length > 2 ? routePoints : [];
 }

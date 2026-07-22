@@ -16,6 +16,18 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
 
   bool _isSaving = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _prefillEmail();
+  }
+
+  Future<void> _prefillEmail() async {
+    final email = await ApiService.getAuthEmail();
+    if (!mounted || email == null || email.trim().isEmpty) return;
+    _emailController.text = email.trim();
+  }
+
   Future<void> _saveDetails() async {
     if (!_formKey.currentState!.validate()) {
       return;

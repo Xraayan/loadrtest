@@ -263,7 +263,7 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
         vehicleType: _selectedVehicle,
         schedule: _selectedSchedule,
       );
-      if (!mounted) return null;
+      if (!mounted || _estimatedRouteKey != estimateKey) return null;
       setState(() {
         _rideEstimate = estimate;
         if (estimate.vehicleQuotes.isNotEmpty &&
@@ -276,7 +276,7 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
       });
       return estimate;
     } catch (e) {
-      if (!mounted) return null;
+      if (!mounted || _estimatedRouteKey != estimateKey) return null;
       setState(() {
         _rideEstimate = null;
         _estimatedRouteKey = null;
@@ -284,7 +284,7 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
       });
       return null;
     } finally {
-      if (mounted) {
+      if (mounted && _estimatedRouteKey == estimateKey) {
         setState(() => _isEstimatingRide = false);
       }
     }
@@ -1019,28 +1019,16 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
         longitude: point.longitude,
       );
       if (!mounted || lookupId != _reverseLookupId) return place;
-      final selectedPlace = _placeAtPoint(place, point);
       setState(() {
-        _resolvedPlace = selectedPlace;
-        _selectedAddress = selectedPlace.displayName;
+        _resolvedPlace = place;
+        _selectedAddress = place.displayName;
       });
-      return selectedPlace;
+      return place;
     } finally {
       if (mounted && lookupId == _reverseLookupId) {
         setState(() => _resolvingAddress = false);
       }
     }
-  }
-
-  PlaceSuggestion _placeAtPoint(PlaceSuggestion place, LatLng point) {
-    return PlaceSuggestion(
-      displayName: place.displayName,
-      latitude: point.latitude,
-      longitude: point.longitude,
-      city: place.city,
-      district: place.district,
-      state: place.state,
-    );
   }
 
   Future<void> _confirm() async {

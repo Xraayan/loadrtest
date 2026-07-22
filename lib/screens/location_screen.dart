@@ -175,15 +175,8 @@ class _LocationScreenState extends State<LocationScreen> {
         latitude: position.latitude,
         longitude: position.longitude,
       );
-      final city = place.city.trim().isNotEmpty
-          ? place.city.trim()
-          : place.district.trim();
-      final state = place.state.trim();
-      if (city.isEmpty) {
-        return place.displayName.trim().isEmpty ? null : place.displayName;
-      }
-      if (state.isEmpty || city.toLowerCase() == state.toLowerCase()) return city;
-      return '$city, $state';
+      final label = place.shortLabel;
+      return label.isEmpty ? null : label;
     } catch (_) {
       return null;
     }

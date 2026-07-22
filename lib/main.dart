@@ -15,6 +15,7 @@ import 'package:loadr/screens/request_quote_screen.dart';
 import 'package:loadr/screens/request_vehicle_screen.dart';
 import 'package:loadr/screens/wallet_deposit_screen.dart';
 import 'constants.dart';
+import 'navigation_observer.dart';
 import 'screens/activation_success_screen.dart';
 import 'screens/document_upload_screen.dart';
 import 'screens/language_screen.dart';
@@ -26,6 +27,7 @@ import 'screens/location_screen.dart';
 import 'screens/vehicle_selection_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const LoadRApp());
 }
 
@@ -37,6 +39,7 @@ class LoadRApp extends StatelessWidget {
     return MaterialApp(
       title: 'LoadR',
       debugShowCheckedModeBanner: false,
+      navigatorObservers: [routeObserver],
       theme: ThemeData(
         primaryColor: kPrimaryOrange,
         scaffoldBackgroundColor: Colors.white,

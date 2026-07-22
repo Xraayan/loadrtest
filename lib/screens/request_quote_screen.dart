@@ -164,17 +164,15 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
 
     final distanceKm = routeArgs.estimate.distanceKm;
     final quote = routeArgs.estimate.quoteFor(routeArgs.vehicleType);
-    final pickupPoint = LatLng(
-      routeArgs.pickup.latitude,
-      routeArgs.pickup.longitude,
-    );
-    final dropPoint = LatLng(
-      routeArgs.drop.latitude,
-      routeArgs.drop.longitude,
-    );
-    final routePoints = routeArgs.estimate.routePoints.isEmpty
-        ? [pickupPoint, dropPoint]
-        : routeArgs.estimate.routePoints;
+    final routePoints = routeArgs.estimate.routePoints;
+    final pickupPoint = routePoints.isEmpty
+        ? LatLng(routeArgs.pickup.latitude, routeArgs.pickup.longitude)
+        : routePoints.first;
+    final dropPoint = routePoints.isEmpty
+        ? LatLng(routeArgs.drop.latitude, routeArgs.drop.longitude)
+        : routePoints.last;
+    final cameraPoints =
+        routePoints.isEmpty ? [pickupPoint, dropPoint] : routePoints;
     return Scaffold(
       backgroundColor: const Color(0xFFF8F8F8),
       body: Stack(
@@ -184,7 +182,7 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
               mapController: _mapController,
               options: MapOptions(
                 initialCameraFit: CameraFit.coordinates(
-                  coordinates: routePoints,
+                  coordinates: cameraPoints,
                   padding: EdgeInsets.fromLTRB(
                     44,
                     150,
@@ -212,13 +210,14 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                 ),
                 PolylineLayer(
                   polylines: [
-                    Polyline(
-                      points: routePoints,
-                      color: kPrimaryOrange,
-                      strokeWidth: 6,
-                      borderColor: Colors.white,
-                      borderStrokeWidth: 3,
-                    ),
+                    if (routePoints.length >= 2)
+                      Polyline(
+                        points: routePoints,
+                        color: kPrimaryOrange,
+                        strokeWidth: 6,
+                        borderColor: Colors.white,
+                        borderStrokeWidth: 3,
+                      ),
                   ],
                 ),
                 MarkerLayer(

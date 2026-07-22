@@ -77,19 +77,22 @@ class RideEstimate {
     final metadata = json['pickup_metadata'] is Map
         ? Map<String, dynamic>.from(json['pickup_metadata'] as Map)
         : <String, dynamic>{};
+    final routePoints =
+        (json['route_points'] as List? ?? []).whereType<Map>().map((item) {
+      final point = Map<String, dynamic>.from(item);
+      return LatLng(
+        VehicleQuote._toDouble(point['latitude']),
+        VehicleQuote._toDouble(point['longitude']),
+      );
+    }).where((point) {
+      return point.latitude != 0 && point.longitude != 0;
+    }).toList();
 
     return RideEstimate(
       distanceKm: VehicleQuote._toDouble(json['distance_km']),
       selectedQuote: selected,
       vehicleQuotes: quotes,
-      routePoints:
-          (json['route_points'] as List? ?? []).whereType<Map>().map((item) {
-        final point = Map<String, dynamic>.from(item);
-        return LatLng(
-          VehicleQuote._toDouble(point['latitude']),
-          VehicleQuote._toDouble(point['longitude']),
-        );
-      }).toList(),
+      routePoints: routePoints.length > 2 ? routePoints : const [],
       city: '${metadata['city'] ?? ''}',
       district: '${metadata['district'] ?? ''}',
       state: '${metadata['state'] ?? ''}',

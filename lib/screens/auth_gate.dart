@@ -10,13 +10,26 @@ import 'package:loadr/screens/role_selection_screen.dart';
 import 'package:loadr/services/api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  late final Future<Widget> _startScreen;
+
+  @override
+  void initState() {
+    super.initState();
+    _startScreen = _resolveStartScreen();
+  }
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<Widget>(
-      future: _resolveStartScreen(),
+      future: _startScreen,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.done &&
             snapshot.data != null) {
@@ -35,7 +48,12 @@ class AuthGate extends StatelessWidget {
 
   Future<Widget> _resolveStartScreen() async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token');
+    String? token;
+    try {
+      token = await ApiService.getAuthToken();
+    } catch (_) {
+      return const LandingScreen();
+    }
     final uid = prefs.getString('uid');
     if (token == null || token.isEmpty || uid == null || uid.isEmpty) {
       return const LandingScreen();
@@ -43,6 +61,11 @@ class AuthGate extends StatelessWidget {
 
     try {
       await ApiService.getUserState(uid);
+    } on ApiUnauthorizedException {
+      try {
+        await ApiService.logout();
+      } catch (_) {}
+      return const LandingScreen();
     } catch (_) {
       // Keep using the locally cached session if the backend is unavailable.
     }
@@ -53,7 +76,9 @@ class AuthGate extends StatelessWidget {
     }
 
     if (role == 'user') {
-      final hasProfile = (prefs.getString('customer_name') ?? '').isNotEmpty;
+      final hasProfile =
+          (prefs.getString('customer_name') ?? '').isNotEmpty &&
+              !(prefs.getBool('customer_profile_sync_pending') ?? false);
       if (hasProfile) return const CustomerHomeScreen();
       return const CustomerDetailsScreen();
     }

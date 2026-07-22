@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:loadr/constants.dart';
+import 'package:loadr/navigation_observer.dart';
 import 'package:loadr/services/api_service.dart';
 import 'package:loadr/widgets/bottom_nav.dart';
 import 'package:loadr/widgets/online_toggle.dart';
@@ -16,9 +17,12 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => DashboardScreenState();
 }
 
-class DashboardScreenState extends State<DashboardScreen> {
+class DashboardScreenState extends State<DashboardScreen> with RouteAware {
   Timer? _statusTimer;
   StreamSubscription<Position>? _locationSubscription;
+  ModalRoute<dynamic>? _route;
+  bool _routeVisible = true;
+  bool _isSyncing = false;
   bool _isOnline = true;
   String? _uid;
   String _driverName = 'Driver';
@@ -33,12 +37,40 @@ class DashboardScreenState extends State<DashboardScreen> {
     _loadCachedDriverData();
     _statusTimer = Timer.periodic(
       const Duration(seconds: 20),
-      (_) => _syncDriverDataFromBackend(),
+      (_) {
+        if (_routeVisible && !ApiService.isLoggingOut) {
+          _syncDriverDataFromBackend();
+        }
+      },
     );
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route == null || route == _route) return;
+    if (_route != null) routeObserver.unsubscribe(this);
+    _route = route;
+    routeObserver.subscribe(this, route);
+  }
+
+  @override
+  void didPushNext() {
+    _routeVisible = false;
+    _syncLocationTracking();
+  }
+
+  @override
+  void didPopNext() {
+    _routeVisible = true;
+    _syncLocationTracking();
+    _syncDriverDataFromBackend();
+  }
+
+  @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     _statusTimer?.cancel();
     _locationSubscription?.cancel();
     super.dispose();
@@ -52,11 +84,16 @@ class DashboardScreenState extends State<DashboardScreen> {
     final latitude = prefs.getDouble('driver_latitude');
     final longitude = prefs.getDouble('driver_longitude');
     final activeJobJson = prefs.getString('driver_active_job');
+    final cleanedLocationLabel = _cleanText(locationLabel);
     Map<String, dynamic>? activeJob;
     if (activeJobJson != null && activeJobJson.trim().isNotEmpty) {
-      final decoded = jsonDecode(activeJobJson);
-      if (decoded is Map) {
-        activeJob = Map<String, dynamic>.from(decoded);
+      try {
+        final decoded = jsonDecode(activeJobJson);
+        if (decoded is Map) {
+          activeJob = Map<String, dynamic>.from(decoded);
+        }
+      } catch (_) {
+        await prefs.remove('driver_active_job');
       }
     }
 
@@ -67,16 +104,20 @@ class DashboardScreenState extends State<DashboardScreen> {
       _vehicleNumber = _cleanText(vehicleNumber) ?? 'KL 33 G 3532';
       _isOnline = prefs.getBool('driver_is_active') ?? true;
       _activeJob = activeJob;
-      _locationText = _cleanText(locationLabel) ??
+      _locationText = cleanedLocationLabel ??
           ((latitude != null && longitude != null)
               ? '${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)}'
               : 'Kottayam, Kerala');
     });
     _syncLocationTracking();
+    if (cleanedLocationLabel == null && latitude != null && longitude != null) {
+      _setCityFromCoordinates(latitude, longitude);
+    }
     _syncDriverDataFromBackend();
   }
 
   Future<void> _setOnline(bool value) async {
+    if (ApiService.isLoggingOut) return;
     final previous = _isOnline;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('driver_is_active', value);
@@ -100,50 +141,64 @@ class DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _syncDriverDataFromBackend() async {
-    final uid = _uid ?? await ApiService.getUid();
-    if (uid == null) return;
-
+    if (_isSyncing || !_routeVisible || ApiService.isLoggingOut) return;
+    _isSyncing = true;
     try {
-      final location = await ApiService.getDriverLocation(uid);
-      final active = location['is_active'];
-      if (mounted && active is bool) {
+      final uid = _uid ?? await ApiService.getUid();
+      if (uid == null || !_routeVisible || ApiService.isLoggingOut) return;
+
+      try {
+        final location = await ApiService.getDriverLocation(uid);
+        if (ApiService.isLoggingOut) return;
+        final active = location['is_active'];
+        final latitude = _toDouble(location['latitude']);
+        final longitude = _toDouble(location['longitude']);
+        if (mounted && active is bool) {
+          setState(() {
+            _uid = uid;
+            _isOnline = active;
+          });
+          _syncLocationTracking();
+        }
+        if (latitude != null &&
+            longitude != null &&
+            _looksLikeCoordinates(_locationText)) {
+          await _setCityFromCoordinates(latitude, longitude);
+        }
+      } catch (_) {
+        // Keep cached status if realtime location is temporarily unavailable.
+      }
+
+      try {
+        final activeJob = await ApiService.getDriverActiveJob(uid);
+        if (!mounted || !_routeVisible || ApiService.isLoggingOut) return;
         setState(() {
           _uid = uid;
-          _isOnline = active;
+          _activeJob = activeJob;
         });
-        _syncLocationTracking();
-      }
-    } catch (_) {
-      // Keep cached status if realtime location is temporarily unavailable.
-    }
-
-    try {
-      final activeJob = await ApiService.getDriverActiveJob(uid);
-      if (!mounted) return;
-      setState(() {
-        _uid = uid;
-        _activeJob = activeJob;
-      });
-    } catch (_) {
-      // Keep cached active job if the backend is temporarily unavailable.
-    }
-
-    if (_activeJob == null) {
-      try {
-        final jobs = await ApiService.getJobs();
-        if (!mounted) return;
-        setState(() => _openLoadCount = jobs.length);
       } catch (_) {
-        // Keep the last known count if jobs cannot be refreshed right now.
+        // Keep cached active job if the backend is temporarily unavailable.
       }
-    } else if (mounted) {
-      setState(() => _openLoadCount = null);
+
+      if (_activeJob == null) {
+        try {
+          final jobs = await ApiService.getJobs();
+          if (!mounted || !_routeVisible || ApiService.isLoggingOut) return;
+          setState(() => _openLoadCount = jobs.length);
+        } catch (_) {
+          // Keep the last known count if jobs cannot be refreshed right now.
+        }
+      } else if (mounted) {
+        setState(() => _openLoadCount = null);
+      }
+    } finally {
+      _isSyncing = false;
     }
   }
 
   void _syncLocationTracking() {
     final uid = _uid;
-    if (!_isOnline || uid == null) {
+    if (ApiService.isLoggingOut || !_routeVisible || !_isOnline || uid == null) {
       _locationSubscription?.cancel();
       _locationSubscription = null;
       return;
@@ -156,6 +211,7 @@ class DashboardScreenState extends State<DashboardScreen> {
         distanceFilter: 100,
       ),
     ).listen((position) async {
+      if (ApiService.isLoggingOut || !_routeVisible) return;
       try {
         await ApiService.updateLocation(uid, {
           'latitude': position.latitude,
@@ -258,6 +314,36 @@ class DashboardScreenState extends State<DashboardScreen> {
     final text = value?.trim();
     if (text == null || text.isEmpty) return null;
     return text;
+  }
+
+  double? _toDouble(Object? value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse('${value ?? ''}');
+  }
+
+  bool _looksLikeCoordinates(String value) {
+    return RegExp(r'^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$').hasMatch(value.trim());
+  }
+
+  Future<void> _setCityFromCoordinates(
+      double latitude, double longitude) async {
+    try {
+      final place = await ApiService.reverseGeocode(
+        latitude: latitude,
+        longitude: longitude,
+      );
+      final label = _cleanText(place.shortLabel);
+      if (label == null || !mounted) return;
+      await ApiService.cacheLocation(
+        role: 'driver',
+        latitude: latitude,
+        longitude: longitude,
+        label: label,
+      );
+      if (mounted) setState(() => _locationText = label);
+    } catch (_) {
+      // Keep coordinates if reverse lookup is unavailable.
+    }
   }
 }
 
@@ -513,9 +599,8 @@ class _PrimaryActionCard extends StatelessWidget {
     final activeJob = job;
     final hasJob = activeJob != null;
     final title = hasJob ? 'Accepted load' : 'New Trips';
-    final subtitle = hasJob
-        ? _routeSummary(activeJob)
-        : _openLoadSubtitle(openLoadCount);
+    final subtitle =
+        hasJob ? _routeSummary(activeJob) : _openLoadSubtitle(openLoadCount);
     final cta = hasJob ? 'View trip' : 'View loads';
     final amount = hasJob ? _amountText(activeJob) : null;
 
@@ -683,7 +768,8 @@ class _DriverActionCard extends StatelessWidget {
       color: Colors.white,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
-        onTap: route == null ? null : () => Navigator.pushNamed(context, route!),
+        onTap:
+            route == null ? null : () => Navigator.pushNamed(context, route!),
         borderRadius: BorderRadius.circular(14),
         child: Container(
           padding: const EdgeInsets.all(14),
