@@ -104,7 +104,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   CircleAvatar(
                     radius: 30,
-                    backgroundColor: kPrimaryOrange.withOpacity(0.12),
+                    backgroundColor: kPrimaryOrange.withValues(alpha: 0.12),
                     child: Icon(
                       _role == 'driver'
                           ? Icons.badge_outlined
@@ -231,7 +231,7 @@ class _ProfileTile extends StatelessWidget {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(icon, color: color),

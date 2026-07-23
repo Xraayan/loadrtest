@@ -34,8 +34,28 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
   }
 
   Future<void> _loadBooking() async {
-    setState(() => _isLoading = true);
-    var booking = await _readLocalBooking();
+    setState(() {
+      _isLoading = true;
+      _booking = null;
+    });
+    final cachedBooking = await _readLocalBooking();
+    if (!mounted) return;
+
+    if (cachedBooking != null) {
+      setState(() {
+        _booking = cachedBooking;
+        _isLoading = false;
+      });
+      _refreshBadRoute(cachedBooking);
+    }
+
+    unawaited(_syncBookingFromBackend(cachedBooking));
+  }
+
+  Future<void> _syncBookingFromBackend(
+    Map<String, dynamic>? cachedBooking,
+  ) async {
+    var booking = cachedBooking;
     String? uid;
     try {
       uid = await ApiService.getUid();
@@ -394,8 +414,8 @@ class _RouteMapState extends State<_RouteMap> {
         : widget.routePoints.last;
     final mapStart = widget.driverPoint ?? pickupPoint;
     final cameraPoints = [mapStart, ...widget.routePoints, dropPoint];
-    final markerSize = _markerSize(_zoom);
-    final driverSize = _driverSize(_zoom);
+    final markerSize = routeMarkerSizeForZoom(_zoom);
+    final driverSize = nearbyDriverMarkerSizeForZoom(_zoom);
     final nearbyDrivers = _zoom < 11
         ? const <LatLng>[]
         : widget.nearbyDrivers
@@ -512,18 +532,6 @@ class _RouteMapState extends State<_RouteMap> {
     );
   }
 
-  double _markerSize(double zoom) {
-    if (zoom < 10) return 26;
-    if (zoom < 13) return 34;
-    if (zoom > 16) return 52;
-    return 44;
-  }
-
-  double _driverSize(double zoom) {
-    if (zoom < 12) return 22;
-    if (zoom > 16) return 40;
-    return 32;
-  }
 }
 
 class _MissingMap extends StatelessWidget {
@@ -754,11 +762,7 @@ class _BookingPanel extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: canceling ? null : onCancel,
                     icon: canceling
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
+                        ? const SkeletonBox(width: 16, height: 16, radius: 4)
                         : const Icon(Icons.cancel_outlined),
                     label: Text(canceling ? 'Cancelling...' : 'Cancel pickup'),
                     style: OutlinedButton.styleFrom(
@@ -869,11 +873,7 @@ class _WaitingDriverCard extends StatelessWidget {
       ),
       child: const Row(
         children: [
-          SizedBox(
-            width: 28,
-            height: 28,
-            child: CircularProgressIndicator(strokeWidth: 3),
-          ),
+          SkeletonBox(width: 28, height: 28, radius: 8),
           SizedBox(width: 14),
           Expanded(
             child: Text(

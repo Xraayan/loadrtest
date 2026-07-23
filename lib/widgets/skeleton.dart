@@ -4,25 +4,55 @@ class SkeletonBox extends StatelessWidget {
   final double? width;
   final double height;
   final double radius;
+  final Color? color;
 
   const SkeletonBox({
     super.key,
     this.width,
     required this.height,
     this.radius = 12,
+    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        color: const Color(0xFFECECEC),
-        borderRadius: BorderRadius.circular(radius),
+    final baseColor = color ?? const Color(0xFFE9E7E4);
+    return _Shimmer(
+      baseColor: baseColor,
+      highlightColor: Color.lerp(baseColor, Colors.white, 0.58)!,
+      child: Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: baseColor,
+          borderRadius: BorderRadius.circular(radius),
+        ),
       ),
     );
   }
+}
+
+class SkeletonButtonLabel extends StatelessWidget {
+  final double width;
+  final double height;
+  final Color color;
+
+  const SkeletonButtonLabel({
+    super.key,
+    this.width = 72,
+    this.height = 16,
+    this.color = const Color(0x66FFFFFF),
+  });
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: height,
+        height: height,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          valueColor: AlwaysStoppedAnimation<Color>(color),
+        ),
+      );
 }
 
 class MapScreenSkeleton extends StatelessWidget {
@@ -122,6 +152,69 @@ class MapScreenSkeleton extends StatelessWidget {
   }
 }
 
+class _Shimmer extends StatefulWidget {
+  final Widget child;
+  final Color baseColor;
+  final Color highlightColor;
+
+  const _Shimmer({
+    required this.child,
+    required this.baseColor,
+    required this.highlightColor,
+  });
+
+  @override
+  State<_Shimmer> createState() => _ShimmerState();
+}
+
+class _ShimmerState extends State<_Shimmer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1250),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      child: widget.child,
+      builder: (context, child) {
+        return ShaderMask(
+          blendMode: BlendMode.srcATop,
+          shaderCallback: (bounds) {
+            final width = bounds.width == 0 ? 1.0 : bounds.width;
+            final slide = _controller.value * 2 - 1;
+            return LinearGradient(
+              begin: Alignment(-1 + slide, -0.35),
+              end: Alignment(1 + slide, 0.35),
+              colors: [
+                widget.baseColor,
+                widget.highlightColor,
+                widget.baseColor,
+              ],
+              stops: const [0.22, 0.5, 0.78],
+            ).createShader(Rect.fromLTWH(0, 0, width, bounds.height));
+          },
+          child: child!,
+        );
+      },
+    );
+  }
+}
+
 class CardListSkeleton extends StatelessWidget {
   final int itemCount;
 
@@ -134,7 +227,7 @@ class CardListSkeleton extends StatelessWidget {
         itemCount,
         (index) => const Padding(
           padding: EdgeInsets.only(bottom: 14),
-          child: SkeletonBox(height: 148, radius: 14),
+          child: _TripCardSkeleton(),
         ),
       ),
     );
@@ -156,7 +249,84 @@ class GridSkeleton extends StatelessWidget {
         mainAxisSpacing: 15,
         childAspectRatio: 1.4,
       ),
-      itemBuilder: (context, index) => const SkeletonBox(height: 100),
+      itemBuilder: (context, index) => const _VehicleGridTileSkeleton(),
+    );
+  }
+}
+
+class _TripCardSkeleton extends StatelessWidget {
+  const _TripCardSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFEAEAEA)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0D000000),
+            blurRadius: 14,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SkeletonBox(width: 44, height: 44, radius: 8),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SkeletonBox(height: 16, radius: 5),
+                    SizedBox(height: 8),
+                    SkeletonBox(width: 140, height: 12, radius: 4),
+                  ],
+                ),
+              ),
+              SkeletonBox(width: 66, height: 24, radius: 99),
+            ],
+          ),
+          SizedBox(height: 18),
+          SkeletonBox(height: 13, radius: 4),
+          SizedBox(height: 10),
+          SkeletonBox(width: 220, height: 13, radius: 4),
+          SizedBox(height: 16),
+          SkeletonBox(width: 120, height: 14, radius: 4),
+        ],
+      ),
+    );
+  }
+}
+
+class _VehicleGridTileSkeleton extends StatelessWidget {
+  const _VehicleGridTileSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFEAEAEA)),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SkeletonBox(width: 38, height: 38, radius: 8),
+          Spacer(),
+          SkeletonBox(height: 14, radius: 4),
+          SizedBox(height: 8),
+          SkeletonBox(width: 88, height: 12, radius: 4),
+        ],
+      ),
     );
   }
 }

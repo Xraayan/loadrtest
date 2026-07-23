@@ -17,20 +17,25 @@ class DriverActiveTripScreen extends StatefulWidget {
   State<DriverActiveTripScreen> createState() => _DriverActiveTripScreenState();
 }
 
-class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
+class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
+    with WidgetsBindingObserver {
   final _mapController = MapController();
   Map<String, dynamic>? _job;
   RideEstimate? _estimate;
   RideEstimate? _approachEstimate;
   LatLng? _currentPoint;
   StreamSubscription<Position>? _positionSubscription;
+  String? _driverUid;
+  bool _appIsForeground = true;
   bool _isLoading = true;
   bool _isUpdatingStatus = false;
   String? _error;
+  double _zoom = 13;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final args = ModalRoute.of(context)?.settings.arguments;
       _loadTrip(args is Map ? Map<String, dynamic>.from(args) : null);
@@ -48,6 +53,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
       if (uid == null) {
         throw Exception('User not authenticated');
       }
+      _driverUid = uid;
 
       final backendJob = await ApiService.getDriverActiveJob(uid);
       final job = backendJob ?? initialJob;
@@ -172,6 +178,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
             _text(job['status']).toLowerCase() == 'arriving');
     final canConfirmDropoff =
         pickedUp && distanceToDropKm <= _dropoffConfirmRadiusKm;
+    final markerSize = routeMarkerSizeForZoom(_zoom);
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F7),
       body: Stack(
@@ -192,6 +199,11 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
                 ),
                 minZoom: 4,
                 maxZoom: 20,
+                onPositionChanged: (camera, _) {
+                  if ((camera.zoom - _zoom).abs() >= 0.1) {
+                    setState(() => _zoom = camera.zoom);
+                  }
+                },
                 interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.drag |
                       InteractiveFlag.pinchZoom |
@@ -233,33 +245,36 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
                   markers: [
                     Marker(
                       point: currentPoint,
-                      width: 46,
-                      height: 46,
-                      child: const _RouteMarker(
+                      width: markerSize,
+                      height: markerSize,
+                      child: _RouteMarker(
                         icon: Icons.local_shipping,
                         backgroundColor: kPrimaryOrange,
                         foregroundColor: Colors.white,
+                        iconSize: markerSize * 0.5,
                       ),
                     ),
                     if (!pickedUp)
                       Marker(
                         point: pickupPoint,
-                        width: 46,
-                        height: 46,
-                        child: const _RouteMarker(
+                        width: markerSize,
+                        height: markerSize,
+                        child: _RouteMarker(
                           icon: Icons.trip_origin,
                           backgroundColor: Colors.white,
                           foregroundColor: kPrimaryOrange,
+                          iconSize: markerSize * 0.48,
                         ),
                       ),
                     Marker(
                       point: dropPoint,
-                      width: 46,
-                      height: 46,
-                      child: const _RouteMarker(
+                      width: markerSize,
+                      height: markerSize,
+                      child: _RouteMarker(
                         icon: Icons.stop,
                         backgroundColor: Colors.black87,
                         foregroundColor: Colors.white,
+                        iconSize: markerSize * 0.48,
                       ),
                     ),
                   ],
@@ -349,7 +364,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
   }
 
   void _startLocationUpdates(String uid) {
-    if (_positionSubscription != null) return;
+    if (!_appIsForeground || _positionSubscription != null) return;
     _positionSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
@@ -380,6 +395,23 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
         // The next movement update retries automatically.
       }
     }, onError: (_) {});
+  }
+
+  void _stopLocationUpdates() {
+    final subscription = _positionSubscription;
+    _positionSubscription = null;
+    subscription?.cancel();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appIsForeground = state == AppLifecycleState.resumed;
+    if (!_appIsForeground) {
+      _stopLocationUpdates();
+      return;
+    }
+    final uid = _driverUid;
+    if (uid != null && _job != null) _startLocationUpdates(uid);
   }
 
   Future<void> _confirmPickup() async {
@@ -459,7 +491,8 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
 
   @override
   void dispose() {
-    _positionSubscription?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _stopLocationUpdates();
     super.dispose();
   }
 }
@@ -833,11 +866,13 @@ class _RouteMarker extends StatelessWidget {
   final IconData icon;
   final Color backgroundColor;
   final Color foregroundColor;
+  final double iconSize;
 
   const _RouteMarker({
     required this.icon,
     required this.backgroundColor,
     required this.foregroundColor,
+    required this.iconSize,
   });
 
   @override
@@ -854,7 +889,7 @@ class _RouteMarker extends StatelessWidget {
           ),
         ],
       ),
-      child: Icon(icon, color: foregroundColor, size: 22),
+      child: Icon(icon, color: foregroundColor, size: iconSize),
     );
   }
 }

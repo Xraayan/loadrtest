@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:loadr/constants.dart';
 import 'package:loadr/services/api_service.dart';
+import 'package:loadr/widgets/skeleton.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key});
@@ -17,7 +18,8 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
     final role = _selectedRole;
     if (role == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please choose how you want to use LoadR')),
+        const SnackBar(
+            content: Text('Please choose how you want to use LoadR')),
       );
       return;
     }
@@ -105,17 +107,14 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: kPrimaryOrange,
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor: kPrimaryOrange.withOpacity(0.6),
+                    disabledBackgroundColor:
+                        kPrimaryOrange.withValues(alpha: 0.6),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                   child: _isSaving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(color: Colors.white),
-                        )
+                      ? const SkeletonButtonLabel(width: 72)
                       : const Text(
                           'Continue',
                           style: TextStyle(

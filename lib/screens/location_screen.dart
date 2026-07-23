@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants.dart';
 import '../services/api_service.dart';
+import '../widgets/skeleton.dart';
 
 class LocationScreen extends StatefulWidget {
   const LocationScreen({super.key});
@@ -151,11 +152,7 @@ class _LocationScreenState extends State<LocationScreen> {
                     borderRadius: BorderRadius.circular(15)),
               ),
               child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(color: Colors.white),
-                    )
+                  ? const SkeletonButtonLabel(width: 140)
                   : const Text("Use current location"),
             ),
             TextButton(

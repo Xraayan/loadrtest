@@ -1,6 +1,6 @@
 {
-    "name": "loadr",
-    "short_name": "loadr",
+    "name": "LoadR",
+    "short_name": "LoadR",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

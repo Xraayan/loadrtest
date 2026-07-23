@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:loadr/constants.dart';
 import 'package:loadr/services/api_service.dart';
 import 'package:loadr/widgets/onboarding_stepper.dart';
+import 'package:loadr/widgets/skeleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PreferencesStateScreen extends StatefulWidget {
@@ -115,11 +116,7 @@ class _PreferencesStateScreenState extends State<PreferencesStateScreen> {
                   minimumSize: const Size(double.infinity, 55),
                 ),
                 child: _isSaving
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(color: Colors.white),
-                      )
+                    ? const SkeletonButtonLabel(width: 72)
                     : const Text(
                         "Continue",
                         style: TextStyle(color: Colors.white),

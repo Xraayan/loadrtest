@@ -6,6 +6,7 @@ import 'package:pinput/pinput.dart';
 
 import '../constants.dart';
 import '../services/api_service.dart';
+import '../widgets/skeleton.dart';
 
 class OTPScreen extends StatefulWidget {
   const OTPScreen({super.key});
@@ -176,7 +177,7 @@ class _OTPScreenState extends State<OTPScreen> {
               width: 56,
               height: 56,
               decoration: BoxDecoration(
-                color: kPrimaryOrange.withOpacity(0.12),
+                color: kPrimaryOrange.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -224,7 +225,8 @@ class _OTPScreenState extends State<OTPScreen> {
                 ),
                 submittedPinTheme: defaultPinTheme.copyWith(
                   decoration: defaultPinTheme.decoration!.copyWith(
-                    border: Border.all(color: kPrimaryOrange.withOpacity(0.45)),
+                    border: Border.all(
+                        color: kPrimaryOrange.withValues(alpha: 0.45)),
                   ),
                 ),
                 onCompleted: (_) => _handleVerifyOtp(),
@@ -238,21 +240,15 @@ class _OTPScreenState extends State<OTPScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: kPrimaryOrange,
                   foregroundColor: Colors.white,
-                  disabledBackgroundColor: kPrimaryOrange.withOpacity(0.55),
+                  disabledBackgroundColor:
+                      kPrimaryOrange.withValues(alpha: 0.55),
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
                 child: _isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
+                    ? const SkeletonButtonLabel(width: 72)
                     : const Text(
                         'Verify and Continue',
                         style: TextStyle(
@@ -269,11 +265,7 @@ class _OTPScreenState extends State<OTPScreen> {
                     ? _resendOtp
                     : null,
                 child: _isResending
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                    ? const SkeletonBox(width: 86, height: 12, radius: 4)
                     : Text(
                         _secondsLeft == 0
                             ? 'Resend code'

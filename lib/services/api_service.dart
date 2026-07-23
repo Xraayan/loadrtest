@@ -278,9 +278,8 @@ class ApiService {
     if (role == null || role.isEmpty) return '/role-selection';
 
     if (role == 'user') {
-      final hasProfile =
-          (prefs.getString('customer_name') ?? '').isNotEmpty &&
-              !(prefs.getBool('customer_profile_sync_pending') ?? false);
+      final hasProfile = (prefs.getString('customer_name') ?? '').isNotEmpty &&
+          !(prefs.getBool('customer_profile_sync_pending') ?? false);
       return hasProfile ? '/customer-home' : '/customer-details';
     }
 
@@ -517,11 +516,6 @@ class ApiService {
     final token = await getAuthToken();
     if (token == null || token.trim().isEmpty) return [];
 
-    final cacheKey = 'jobs_${state ?? ''}_${city ?? ''}_${district ?? ''}_'
-        '${vehicleType ?? ''}';
-    final cached = await _readJsonCache(cacheKey, const Duration(seconds: 20));
-    if (cached is List) return cached;
-
     try {
       final query = <String, String>{
         if (state != null && state.trim().isNotEmpty) 'state': state.trim(),
@@ -543,18 +537,22 @@ class ApiService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data is List) {
-          await _writeJsonCache(cacheKey, data);
-          return data;
+          return _openJobsOnly(data);
         }
         return [];
       } else {
         throw Exception('Failed to get jobs: ${response.body}');
       }
     } catch (e) {
-      final stale = await _readJsonCache(cacheKey, const Duration(days: 7));
-      if (stale is List) return stale;
       throw Exception('Error: $e');
     }
+  }
+
+  static List<dynamic> _openJobsOnly(List<dynamic> jobs) {
+    return jobs.where((job) {
+      if (job is! Map) return false;
+      return '${job['status'] ?? ''}'.trim().toLowerCase() == 'open';
+    }).toList();
   }
 
   // Create customer load request as an open job for drivers
@@ -872,7 +870,8 @@ class ApiService {
     } catch (e) {
       final stale = await _readJsonCache(cacheKey, const Duration(days: 1));
       if (stale is Map) {
-        final estimate = RideEstimate.fromJson(Map<String, dynamic>.from(stale));
+        final estimate =
+            RideEstimate.fromJson(Map<String, dynamic>.from(stale));
         if (estimate.routePoints.length > 2) return estimate;
       }
       throw Exception('Error: $e');

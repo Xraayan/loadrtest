@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:loadr/constants.dart';
 import 'package:loadr/services/api_service.dart';
+import 'package:loadr/widgets/skeleton.dart';
 
 class CustomerDetailsScreen extends StatefulWidget {
   const CustomerDetailsScreen({super.key});
@@ -141,17 +142,14 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: kPrimaryOrange,
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor: kPrimaryOrange.withOpacity(0.6),
+                    disabledBackgroundColor:
+                        kPrimaryOrange.withValues(alpha: 0.6),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                   child: _isSaving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(color: Colors.white),
-                        )
+                      ? const SkeletonButtonLabel(width: 156)
                       : const Text(
                           'Save and Continue',
                           style: TextStyle(

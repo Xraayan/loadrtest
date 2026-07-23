@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:loadr/constants.dart';
 import 'package:loadr/services/api_service.dart';
+import 'package:loadr/widgets/skeleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
@@ -15,6 +16,7 @@ class CustomerHomeScreen extends StatefulWidget {
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   String _displayName = 'Customer';
   Map<String, dynamic>? _activeBooking;
+  bool _isLoadingHome = true;
 
   @override
   void initState() {
@@ -27,16 +29,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       final prefs = await SharedPreferences.getInstance();
       final name = prefs.getString('customer_name');
       final activeBookingJson = prefs.getString('active_booking');
-    Map<String, dynamic>? activeBooking;
-    if (activeBookingJson != null && activeBookingJson.trim().isNotEmpty) {
-      try {
-        final decoded = jsonDecode(activeBookingJson);
-        if (decoded is Map) {
-          activeBooking = Map<String, dynamic>.from(decoded);
+      Map<String, dynamic>? activeBooking;
+      if (activeBookingJson != null && activeBookingJson.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(activeBookingJson);
+          if (decoded is Map) {
+            activeBooking = Map<String, dynamic>.from(decoded);
+          }
+        } catch (_) {
+          await prefs.remove('active_booking');
         }
-      } catch (_) {
-        await prefs.remove('active_booking');
-      }
       }
 
       if (!mounted) return;
@@ -45,6 +47,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           _displayName = name.trim();
         }
         _activeBooking = activeBooking;
+        _isLoadingHome = false;
       });
 
       final uid = prefs.getString('uid');
@@ -55,11 +58,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       }
     } catch (_) {
       // Keep cached dashboard data while the backend is unavailable.
+      if (mounted) setState(() => _isLoadingHome = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingHome) return const _CustomerHomeSkeleton();
+
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F7),
       body: SafeArea(
@@ -98,7 +104,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     borderRadius: BorderRadius.circular(999),
                     child: CircleAvatar(
                       radius: 24,
-                      backgroundColor: kPrimaryOrange.withOpacity(0.12),
+                      backgroundColor: kPrimaryOrange.withValues(alpha: 0.12),
                       child: const Icon(
                         Icons.person_outline,
                         color: kPrimaryOrange,
@@ -109,138 +115,295 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
             ),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: kPrimaryOrange,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Move goods without the calls',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Book a vehicle, compare driver availability, and track your shipment.',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                            height: 1.4,
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-                        SizedBox(
-                          height: 46,
-                          child: ElevatedButton.icon(
-                            onPressed: () async {
-                              await Navigator.pushNamed(
-                                context,
-                                '/request-vehicle',
-                              );
-                              if (mounted) {
-                                _loadHeader();
-                              }
-                            },
-                            icon: const Icon(
-                              Icons.add_road,
-                              color: kPrimaryOrange,
-                            ),
-                            label: const Text('Request Vehicle'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: kPrimaryOrange,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
+              child: RefreshIndicator(
+                onRefresh: _loadHeader,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: kPrimaryOrange,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Move goods without the calls',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-                  const Text(
-                    'For you',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 1.18,
-                    children: [
-                      _CustomerActionCard(
-                        title: 'Active Bookings',
-                        subtitle: _activeBooking == null
-                            ? 'Track current moves'
-                            : _bookingTileSubtitle(_activeBooking!),
-                        icon: Icons.route_outlined,
-                        active: _activeBooking != null,
-                        onTap: _activeBooking == null
-                            ? null
-                            : () async {
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Book a vehicle, compare driver availability, and track your shipment.',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                              height: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          SizedBox(
+                            height: 46,
+                            child: ElevatedButton.icon(
+                              onPressed: () async {
                                 await Navigator.pushNamed(
                                   context,
-                                  '/active-booking',
+                                  '/request-vehicle',
                                 );
                                 if (mounted) {
                                   _loadHeader();
                                 }
                               },
+                              icon: const Icon(
+                                Icons.add_road,
+                                color: kPrimaryOrange,
+                              ),
+                              label: const Text('Request Vehicle'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: kPrimaryOrange,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const _CustomerActionCard(
-                        title: 'Saved Places',
-                        subtitle: 'Pickup and drop points',
-                        icon: Icons.bookmark_border,
+                    ),
+                    const SizedBox(height: 22),
+                    const Text(
+                      'For you',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
                       ),
-                      const _CustomerActionCard(
-                        title: 'Quotes',
-                        subtitle: 'Compare load prices',
-                        icon: Icons.receipt_long_outlined,
-                      ),
-                      const _CustomerActionCard(
-                        title: 'Support',
-                        subtitle: 'Get help quickly',
-                        icon: Icons.support_agent,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 22),
-                  _activeBooking == null
-                      ? const _EmptyBookingCard()
-                      : _ActiveBookingCard(
-                          booking: _activeBooking!,
-                          onTap: () async {
-                            await Navigator.pushNamed(
-                              context,
-                              '/active-booking',
-                            );
-                            if (mounted) {
-                              _loadHeader();
-                            }
-                          },
+                    ),
+                    const SizedBox(height: 12),
+                    GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: 1.18,
+                      children: [
+                        _CustomerActionCard(
+                          title: 'Active Bookings',
+                          subtitle: _activeBooking == null
+                              ? 'Track current moves'
+                              : _bookingTileSubtitle(_activeBooking!),
+                          icon: Icons.route_outlined,
+                          active: _activeBooking != null,
+                          onTap: _activeBooking == null
+                              ? null
+                              : () async {
+                                  await Navigator.pushNamed(
+                                    context,
+                                    '/active-booking',
+                                  );
+                                  if (mounted) {
+                                    _loadHeader();
+                                  }
+                                },
                         ),
-                ],
+                        const _CustomerActionCard(
+                          title: 'Saved Places',
+                          subtitle: 'Pickup and drop points',
+                          icon: Icons.bookmark_border,
+                        ),
+                        const _CustomerActionCard(
+                          title: 'Quotes',
+                          subtitle: 'Compare load prices',
+                          icon: Icons.receipt_long_outlined,
+                        ),
+                        const _CustomerActionCard(
+                          title: 'Support',
+                          subtitle: 'Get help quickly',
+                          icon: Icons.support_agent,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 22),
+                    _activeBooking == null
+                        ? const _EmptyBookingCard()
+                        : _ActiveBookingCard(
+                            booking: _activeBooking!,
+                            onTap: () async {
+                              await Navigator.pushNamed(
+                                context,
+                                '/active-booking',
+                              );
+                              if (mounted) {
+                                _loadHeader();
+                              }
+                            },
+                          ),
+                  ],
+                ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CustomerHomeSkeleton extends StatelessWidget {
+  const _CustomerHomeSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F7F7),
+      body: SafeArea(
+        child: ListView(
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          children: const [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SkeletonBox(width: 78, height: 14, radius: 4),
+                      SizedBox(height: 8),
+                      SkeletonBox(width: 164, height: 31, radius: 8),
+                    ],
+                  ),
+                ),
+                SkeletonBox(width: 48, height: 48, radius: 24),
+              ],
+            ),
+            SizedBox(height: 24),
+            _CustomerHeroSkeleton(),
+            SizedBox(height: 22),
+            SkeletonBox(width: 76, height: 18, radius: 5),
+            SizedBox(height: 12),
+            _CustomerActionGridSkeleton(),
+            SizedBox(height: 22),
+            _CustomerBookingSkeleton(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CustomerHeroSkeleton extends StatelessWidget {
+  const _CustomerHeroSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: kPrimaryOrange,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SkeletonBox(
+              width: 240, height: 27, radius: 6, color: Color(0x66FFFFFF)),
+          SizedBox(height: 10),
+          SkeletonBox(height: 14, radius: 4, color: Color(0x4DFFFFFF)),
+          SizedBox(height: 8),
+          SkeletonBox(
+              width: 230, height: 14, radius: 4, color: Color(0x4DFFFFFF)),
+          SizedBox(height: 18),
+          SkeletonBox(height: 46, radius: 8, color: Colors.white),
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomerActionGridSkeleton extends StatelessWidget {
+  const _CustomerActionGridSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 2,
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      childAspectRatio: 1.18,
+      children: const [
+        _CustomerActionSkeletonTile(),
+        _CustomerActionSkeletonTile(),
+        _CustomerActionSkeletonTile(),
+        _CustomerActionSkeletonTile(),
+      ],
+    );
+  }
+}
+
+class _CustomerActionSkeletonTile extends StatelessWidget {
+  const _CustomerActionSkeletonTile();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFEAEAEA)),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SkeletonBox(width: 28, height: 28, radius: 7),
+          Spacer(),
+          SkeletonBox(height: 15, radius: 4),
+          SizedBox(height: 8),
+          SkeletonBox(width: 98, height: 12, radius: 4),
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomerBookingSkeleton extends StatelessWidget {
+  const _CustomerBookingSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFEAEAEA)),
+      ),
+      child: const Row(
+        children: [
+          SkeletonBox(width: 44, height: 44, radius: 8),
+          SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SkeletonBox(width: 164, height: 15, radius: 4),
+                SizedBox(height: 8),
+                SkeletonBox(height: 13, radius: 4),
+                SizedBox(height: 7),
+                SkeletonBox(width: 190, height: 13, radius: 4),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

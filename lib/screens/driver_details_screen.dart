@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:loadr/services/api_service.dart';
+import 'package:loadr/widgets/skeleton.dart';
 
 class DriverDetailsScreen extends StatefulWidget {
   const DriverDetailsScreen({super.key});
@@ -160,7 +161,7 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withValues(alpha: 0.06),
             blurRadius: 16,
             spreadRadius: 2,
             offset: const Offset(0, 4),
@@ -305,22 +306,16 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> {
         onPressed: _isLoading ? null : _saveDriverDetails,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFE64A19),
-          disabledBackgroundColor: const Color(0xFFE64A19).withOpacity(0.6),
+          disabledBackgroundColor:
+              const Color(0xFFE64A19).withValues(alpha: 0.6),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
           elevation: 3,
-          shadowColor: const Color(0xFFE64A19).withOpacity(0.4),
+          shadowColor: const Color(0xFFE64A19).withValues(alpha: 0.4),
         ),
         child: _isLoading
-            ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2.5,
-                ),
-              )
+            ? const SkeletonButtonLabel(width: 140)
             : Text(
                 'Save Details',
                 style: GoogleFonts.poppins(

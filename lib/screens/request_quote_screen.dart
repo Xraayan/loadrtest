@@ -7,6 +7,7 @@ import 'package:loadr/constants.dart';
 import 'package:loadr/models/place_suggestion.dart';
 import 'package:loadr/models/ride_quote.dart';
 import 'package:loadr/services/api_service.dart';
+import 'package:loadr/widgets/skeleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class RequestQuoteArgs {
@@ -39,6 +40,7 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
   bool _isPosting = false;
   bool _loadedNearbyDrivers = false;
   List<Map<String, dynamic>> _nearbyDrivers = [];
+  double _zoom = 13;
 
   @override
   void didChangeDependencies() {
@@ -173,6 +175,8 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
         : routePoints.last;
     final cameraPoints =
         routePoints.isEmpty ? [pickupPoint, dropPoint] : routePoints;
+    final markerSize = routeMarkerSizeForZoom(_zoom);
+    final nearbyDriverSize = nearbyDriverMarkerSizeForZoom(_zoom);
     return Scaffold(
       backgroundColor: const Color(0xFFF8F8F8),
       body: Stack(
@@ -193,6 +197,11 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                 ),
                 minZoom: 4,
                 maxZoom: 20,
+                onPositionChanged: (camera, _) {
+                  if ((camera.zoom - _zoom).abs() >= 0.1) {
+                    setState(() => _zoom = camera.zoom);
+                  }
+                },
                 interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.drag |
                       InteractiveFlag.pinchZoom |
@@ -224,30 +233,34 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                   markers: [
                     Marker(
                       point: pickupPoint,
-                      width: 46,
-                      height: 46,
-                      child: const _RouteMarker(
+                      width: markerSize,
+                      height: markerSize,
+                      child: _RouteMarker(
                         icon: Icons.trip_origin,
                         backgroundColor: Colors.white,
                         foregroundColor: kPrimaryOrange,
+                        iconSize: markerSize * 0.48,
                       ),
                     ),
                     Marker(
                       point: dropPoint,
-                      width: 46,
-                      height: 46,
-                      child: const _RouteMarker(
+                      width: markerSize,
+                      height: markerSize,
+                      child: _RouteMarker(
                         icon: Icons.stop,
                         backgroundColor: Colors.black87,
                         foregroundColor: Colors.white,
+                        iconSize: markerSize * 0.48,
                       ),
                     ),
                     ..._nearbyDrivers.map(_driverPoint).whereType<LatLng>().map(
                           (point) => Marker(
                             point: point,
-                            width: 38,
-                            height: 38,
-                            child: const _NearbyDriverMarker(),
+                            width: nearbyDriverSize,
+                            height: nearbyDriverSize,
+                            child: _NearbyDriverMarker(
+                              iconSize: nearbyDriverSize * 0.5,
+                            ),
                           ),
                         ),
                   ],
@@ -429,11 +442,13 @@ class _RouteMarker extends StatelessWidget {
   final IconData icon;
   final Color backgroundColor;
   final Color foregroundColor;
+  final double iconSize;
 
   const _RouteMarker({
     required this.icon,
     required this.backgroundColor,
     required this.foregroundColor,
+    required this.iconSize,
   });
 
   @override
@@ -450,13 +465,15 @@ class _RouteMarker extends StatelessWidget {
           ),
         ],
       ),
-      child: Icon(icon, color: foregroundColor, size: 22),
+      child: Icon(icon, color: foregroundColor, size: iconSize),
     );
   }
 }
 
 class _NearbyDriverMarker extends StatelessWidget {
-  const _NearbyDriverMarker();
+  final double iconSize;
+
+  const _NearbyDriverMarker({required this.iconSize});
 
   @override
   Widget build(BuildContext context) {
@@ -469,10 +486,10 @@ class _NearbyDriverMarker extends StatelessWidget {
           BoxShadow(color: Color(0x26000000), blurRadius: 10),
         ],
       ),
-      child: const Icon(
+      child: Icon(
         Icons.local_shipping,
         color: kPrimaryOrange,
-        size: 19,
+        size: iconSize,
       ),
     );
   }
@@ -570,14 +587,7 @@ class _ConfirmationPanel extends StatelessWidget {
                   ),
                 ),
                 child: posting
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
+                    ? const SkeletonButtonLabel(width: 152)
                     : Text(
                         posted ? 'Done' : 'Confirm ${args.vehicleType}',
                         style: const TextStyle(

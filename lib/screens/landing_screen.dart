@@ -17,7 +17,14 @@ class LandingScreen extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.local_shipping, color: Colors.white, size: 50),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.asset(
+                      'assets/loadr_logo.png',
+                      width: 58,
+                      height: 58,
+                    ),
+                  ),
                   const SizedBox(width: 10),
                   Text(
                     "LOADR",

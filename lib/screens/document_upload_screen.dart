@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../constants.dart';
 import '../services/api_service.dart';
 import '../widgets/onboarding_stepper.dart';
+import '../widgets/skeleton.dart';
 
 class DocumentUploadScreen extends StatefulWidget {
   const DocumentUploadScreen({super.key});
@@ -229,11 +230,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                   ),
                 ),
                 child: _isUploading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(color: Colors.white),
-                      )
+                    ? const SkeletonButtonLabel(width: 44)
                     : const Text(
                         "NEXT",
                         style: TextStyle(

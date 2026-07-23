@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:loadr/constants.dart';
 import 'package:loadr/screens/customer_details_screen.dart';
 import 'package:loadr/screens/customer_home_screen.dart';
 import 'package:loadr/screens/dashboard_screen.dart';
@@ -8,6 +7,7 @@ import 'package:loadr/screens/landing_screen.dart';
 import 'package:loadr/screens/location_screen.dart';
 import 'package:loadr/screens/role_selection_screen.dart';
 import 'package:loadr/services/api_service.dart';
+import 'package:loadr/widgets/skeleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthGate extends StatefulWidget {
@@ -38,9 +38,7 @@ class _AuthGateState extends State<AuthGate> {
 
         return const Scaffold(
           backgroundColor: Colors.white,
-          body: Center(
-            child: CircularProgressIndicator(color: kPrimaryOrange),
-          ),
+          body: Center(child: SkeletonBox(width: 160, height: 20, radius: 6)),
         );
       },
     );

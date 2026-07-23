@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../constants.dart';
 import '../services/api_service.dart';
+import '../widgets/skeleton.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -67,7 +68,7 @@ class _SignInScreenState extends State<SignInScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 50),
-            const Icon(Icons.local_shipping, color: kPrimaryOrange, size: 40),
+            Image.asset('assets/loadr_logo.png', width: 44, height: 44),
             const Text("Welcome LoadR",
                 style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
             const Text("Please enter your sign in details.",
@@ -132,11 +133,7 @@ class _SignInScreenState extends State<SignInScreen> {
                     borderRadius: BorderRadius.circular(15)),
               ),
               child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(color: Colors.white),
-                    )
+                  ? const SkeletonButtonLabel(width: 64)
                   : const Text("Sign In", style: TextStyle(fontSize: 18)),
             ),
           ],

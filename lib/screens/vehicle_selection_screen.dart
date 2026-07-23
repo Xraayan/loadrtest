@@ -18,10 +18,10 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
   bool _isSaving = false;
   List<Map<String, dynamic>> vehicles = [];
   static const _fallbackVehicles = [
-    {"name": "3 Wheeler Ape", "color": "0xFF3F51B5"},
-    {"name": "Tata Ace", "color": "0xFFFF7043"},
-    {"name": "Dost Pickup", "color": "0xFF546E7A"},
-    {"name": "Tata 407 Water Tanker", "color": "0xFF9FA8DA"},
+    {"name": "3 Wheeler Ape"},
+    {"name": "Tata Ace"},
+    {"name": "Dost Pickup"},
+    {"name": "Tata 407 Water Tanker"},
   ];
 
   @override
@@ -42,7 +42,6 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
               .whereType<Map>()
               .map((v) => {
                     "name": v['type'] ?? v['name'] ?? 'Unknown',
-                    "color": "0xFFFF7043",
                   })
               .toList();
         }
@@ -139,11 +138,7 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                       borderRadius: BorderRadius.circular(15)),
                 ),
                 child: _isSaving
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(color: Colors.white),
-                      )
+                    ? const SkeletonButtonLabel(width: 72)
                     : const Text("Continue",
                         style: TextStyle(color: Colors.white)),
               ),
@@ -155,31 +150,108 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
   }
 
   Widget _buildVehicleCard(Map<String, dynamic> vehicle) {
-    bool isSelected = selectedVehicle == vehicle['name'];
+    final name = '${vehicle['name'] ?? 'Vehicle'}';
+    final presentation = _vehiclePresentationFor(name);
+    final isSelected = selectedVehicle == name;
+
     return GestureDetector(
-      onTap: () => setState(() => selectedVehicle = vehicle['name']),
-      child: Container(
+      onTap: () => setState(() => selectedVehicle = name),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Color(int.parse(vehicle['color']!)),
-          borderRadius: BorderRadius.circular(10),
-          border: isSelected ? Border.all(color: Colors.white, width: 3) : null,
+          color: isSelected ? const Color(0xFFFFFBF8) : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? kPrimaryOrange : const Color(0xFFEAEAEA),
+            width: isSelected ? 1.5 : 1,
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0C000000),
+              blurRadius: 8,
+              offset: Offset(0, 3),
+            ),
+          ],
         ),
-        child: Stack(
-          alignment: Alignment.bottomCenter,
+        child: Column(
           children: [
-            const Center(
-                child: Icon(Icons.car_repair, size: 50, color: Colors.white24)),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(4),
-              color: Colors.black26,
-              child: Text(vehicle['name']!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white, fontSize: 12)),
-            )
+            Expanded(
+              child: Image.asset(
+                presentation.assetPath,
+                cacheWidth: 320,
+                filterQuality: FilterQuality.medium,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.local_shipping_outlined,
+                  size: 48,
+                  color: Colors.black38,
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF303030),
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              presentation.capacity,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.black54,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
+}
+
+class _VehiclePresentation {
+  final String assetPath;
+  final String capacity;
+
+  const _VehiclePresentation({
+    required this.assetPath,
+    required this.capacity,
+  });
+}
+
+_VehiclePresentation _vehiclePresentationFor(String vehicleType) {
+  final normalized = vehicleType.toLowerCase();
+  if (normalized.contains('3 wheeler') || normalized.contains('ape')) {
+    return const _VehiclePresentation(
+      assetPath: 'assets/vehicles/three_wheeler_ape.png',
+      capacity: 'Up to 400 kg',
+    );
+  }
+  if (normalized.contains('dost')) {
+    return const _VehiclePresentation(
+      assetPath: 'assets/vehicles/dost.png',
+      capacity: 'Up to 1250 kg',
+    );
+  }
+  if (normalized.contains('407') || normalized.contains('water tanker')) {
+    return const _VehiclePresentation(
+      assetPath: 'assets/vehicles/tata_407.png',
+      capacity: 'Up to 3000 L',
+    );
+  }
+  return const _VehiclePresentation(
+    assetPath: 'assets/vehicles/tata_ace.png',
+    capacity: 'Up to 750 kg',
+  );
 }

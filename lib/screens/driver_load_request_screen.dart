@@ -22,6 +22,7 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
   bool _isLoading = true;
   bool _isAccepting = false;
   String? _error;
+  double _zoom = 13;
 
   @override
   void initState() {
@@ -160,9 +161,8 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
     final pickup = _placeFromJob(job, pickup: true);
     final drop = _placeFromJob(job, pickup: false);
     final savedRoutePoints = _routePointsFromJob(job);
-    final routePoints = savedRoutePoints.isNotEmpty
-        ? savedRoutePoints
-        : estimate.routePoints;
+    final routePoints =
+        savedRoutePoints.isNotEmpty ? savedRoutePoints : estimate.routePoints;
     final pickupPoint = routePoints.isEmpty
         ? LatLng(pickup.latitude, pickup.longitude)
         : routePoints.first;
@@ -171,6 +171,7 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
         : routePoints.last;
     final cameraPoints =
         routePoints.isEmpty ? [pickupPoint, dropPoint] : routePoints;
+    final markerSize = routeMarkerSizeForZoom(_zoom);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F7),
@@ -192,6 +193,11 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
                 ),
                 minZoom: 4,
                 maxZoom: 20,
+                onPositionChanged: (camera, _) {
+                  if ((camera.zoom - _zoom).abs() >= 0.1) {
+                    setState(() => _zoom = camera.zoom);
+                  }
+                },
                 interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.drag |
                       InteractiveFlag.pinchZoom |
@@ -223,22 +229,24 @@ class _DriverLoadRequestScreenState extends State<DriverLoadRequestScreen> {
                   markers: [
                     Marker(
                       point: pickupPoint,
-                      width: 46,
-                      height: 46,
-                      child: const _RouteMarker(
+                      width: markerSize,
+                      height: markerSize,
+                      child: _RouteMarker(
                         icon: Icons.trip_origin,
                         backgroundColor: Colors.white,
                         foregroundColor: kPrimaryOrange,
+                        iconSize: markerSize * 0.48,
                       ),
                     ),
                     Marker(
                       point: dropPoint,
-                      width: 46,
-                      height: 46,
-                      child: const _RouteMarker(
+                      width: markerSize,
+                      height: markerSize,
+                      child: _RouteMarker(
                         icon: Icons.stop,
                         backgroundColor: Colors.black87,
                         foregroundColor: Colors.white,
+                        iconSize: markerSize * 0.48,
                       ),
                     ),
                   ],
@@ -402,7 +410,8 @@ class _LoadRequestPanel extends StatelessWidget {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: kPrimaryOrange,
                   foregroundColor: Colors.white,
-                  disabledBackgroundColor: kPrimaryOrange.withOpacity(0.55),
+                  disabledBackgroundColor:
+                      kPrimaryOrange.withValues(alpha: 0.55),
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -600,11 +609,13 @@ class _RouteMarker extends StatelessWidget {
   final IconData icon;
   final Color backgroundColor;
   final Color foregroundColor;
+  final double iconSize;
 
   const _RouteMarker({
     required this.icon,
     required this.backgroundColor,
     required this.foregroundColor,
+    required this.iconSize,
   });
 
   @override
@@ -621,7 +632,7 @@ class _RouteMarker extends StatelessWidget {
           ),
         ],
       ),
-      child: Icon(icon, color: foregroundColor, size: 22),
+      child: Icon(icon, color: foregroundColor, size: iconSize),
     );
   }
 }

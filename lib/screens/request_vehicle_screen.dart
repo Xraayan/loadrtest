@@ -9,6 +9,7 @@ import 'package:loadr/models/place_suggestion.dart';
 import 'package:loadr/models/ride_quote.dart';
 import 'package:loadr/screens/request_quote_screen.dart';
 import 'package:loadr/services/api_service.dart';
+import 'package:loadr/widgets/skeleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class RequestVehicleScreen extends StatefulWidget {
@@ -19,6 +20,13 @@ class RequestVehicleScreen extends StatefulWidget {
 }
 
 class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
+  static const List<String> _defaultVehicleOptions = [
+    'Tata Ace',
+    '3 Wheeler Ape',
+    'Dost Pickup',
+    'Tata 407 Water Tanker',
+  ];
+
   final _pickupController = TextEditingController();
   final _dropController = TextEditingController();
   final _pickupFocusNode = FocusNode();
@@ -78,6 +86,7 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
     if (!mounted) return;
 
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     final savedLatitude = prefs.getDouble('customer_latitude');
     final savedLongitude = prefs.getDouble('customer_longitude');
     final savedPoint = savedLatitude == null || savedLongitude == null
@@ -227,7 +236,27 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
   }
 
   VehicleQuote? _quoteForVehicle(String vehicleType) {
-    return _rideEstimate?.quoteFor(vehicleType);
+    final estimate = _rideEstimate;
+    if (estimate == null) return null;
+    for (final quote in estimate.vehicleQuotes) {
+      if (quote.vehicleType == vehicleType) return quote;
+    }
+    return null;
+  }
+
+  String? _suggestedVehicleForPicker([RideEstimate? estimate]) {
+    final rideEstimate = estimate ?? _rideEstimate;
+    if (rideEstimate == null) return null;
+
+    final suggested = rideEstimate.suggestedVehicleType.trim();
+    final candidate = _defaultVehicleOptions.contains(suggested)
+        ? suggested
+        : 'Tata Ace';
+    return rideEstimate.vehicleQuotes.any(
+      (quote) => quote.vehicleType == candidate,
+    )
+        ? candidate
+        : null;
   }
 
   String _estimateKeyFor(PlaceSuggestion pickup, PlaceSuggestion drop) {
@@ -269,9 +298,8 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
         if (estimate.vehicleQuotes.isNotEmpty &&
             estimate.quoteFor(_selectedVehicle).vehicleType !=
                 _selectedVehicle) {
-          _selectedVehicle = estimate.suggestedVehicleType.trim().isNotEmpty
-              ? estimate.suggestedVehicleType
-              : estimate.vehicleQuotes.first.vehicleType;
+          _selectedVehicle =
+              _suggestedVehicleForPicker(estimate) ?? _selectedVehicle;
         }
       });
       return estimate;
@@ -303,6 +331,7 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
     setState(() => _isOpeningQuote = true);
 
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     final uid = prefs.getString('uid');
     if (uid == null) {
       setState(() => _isOpeningQuote = false);
@@ -313,6 +342,7 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
     }
 
     final estimate = _rideEstimate ?? await _loadEstimateIfReady();
+    if (!mounted) return;
     if (estimate == null) {
       setState(() => _isOpeningQuote = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -354,6 +384,9 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final vehicles = _vehicleOptions();
+    final suggestedVehicle = _suggestedVehicleForPicker();
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8F8F8),
       appBar: AppBar(
@@ -443,35 +476,63 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
             ),
             const SizedBox(height: 28),
             const _SectionTitle('Vehicle type'),
+            const SizedBox(height: 4),
+            const Text(
+              'Choose the best vehicle for your move',
+              style: TextStyle(
+                color: Colors.black54,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _SuggestVehicleChip(
-                  onTap: () {
-                    final suggested = _rideEstimate?.suggestedVehicleType;
-                    if (suggested == null || suggested.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Select pickup and drop first'),
-                        ),
-                      );
-                      return;
-                    }
-                    setState(() => _selectedVehicle = suggested);
-                  },
-                ),
-                for (final vehicle in _vehicleOptions())
-                  _VehicleChip(
-                    label: vehicle,
-                    amount: _quoteForVehicle(vehicle)?.amount,
-                    selected: _selectedVehicle == vehicle,
-                    onTap: () {
-                      setState(() => _selectedVehicle = vehicle);
-                    },
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate:
+                  const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.8,
                   ),
-              ],
+              itemCount: vehicles.length + 1,
+              itemBuilder: (context, index) {
+                if (index == vehicles.length) {
+                  return _SuggestVehicleCard(
+                    suggestedVehicle: suggestedVehicle,
+                    onTap: () {
+                      if (suggestedVehicle == null ||
+                          suggestedVehicle.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Select pickup and drop first'),
+                          ),
+                        );
+                        return;
+                      }
+                      setState(() => _selectedVehicle = suggestedVehicle);
+                    },
+                  );
+                }
+
+                final vehicle = vehicles[index];
+                final presentation = _vehiclePresentationFor(vehicle);
+                return _VehicleSelectionCard(
+                  label: vehicle,
+                  capacity: presentation.capacity,
+                  assetPath: presentation.assetPath,
+                  fallbackIcon: presentation.fallbackIcon,
+                  amount: _quoteForVehicle(vehicle)?.amount,
+                  selected: _selectedVehicle == vehicle,
+                  recommended: _rideEstimate == null
+                      ? vehicle == 'Tata Ace'
+                      : vehicle == suggestedVehicle,
+                  onTap: () {
+                    setState(() => _selectedVehicle = vehicle);
+                  },
+                );
+              },
             ),
             if (_isEstimatingRide) ...[
               const SizedBox(height: 12),
@@ -501,14 +562,7 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
                 ),
               ),
               child: _isOpeningQuote
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
+                  ? const SkeletonButtonLabel(width: 144)
                   : const Text(
                       'Continue',
                       style: TextStyle(
@@ -523,18 +577,7 @@ class _RequestVehicleScreenState extends State<RequestVehicleScreen> {
     );
   }
 
-  List<String> _vehicleOptions() {
-    final quotes = _rideEstimate?.vehicleQuotes;
-    if (quotes != null && quotes.isNotEmpty) {
-      return quotes.map((quote) => quote.vehicleType).toList();
-    }
-    return const [
-      '3 Wheeler Ape',
-      'Tata Ace',
-      'Dost Pickup',
-      'Tata 407 Water Tanker',
-    ];
-  }
+  List<String> _vehicleOptions() => _defaultVehicleOptions;
 
   @override
   void dispose() {
@@ -764,11 +807,7 @@ class _RouteLocationRow extends StatelessWidget {
                   child: loading
                       ? const Center(
                           key: ValueKey('loading'),
-                          child: SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
+                          child: SkeletonBox(width: 18, height: 18, radius: 4),
                         )
                       : IconButton(
                           key: ValueKey('map-$selected'),
@@ -776,7 +815,7 @@ class _RouteLocationRow extends StatelessWidget {
                           onPressed: onMapTap,
                           style: IconButton.styleFrom(
                             backgroundColor: selected
-                                ? kPrimaryOrange.withOpacity(0.10)
+                                ? kPrimaryOrange.withValues(alpha: 0.10)
                                 : const Color(0xFFF5F5F5),
                             foregroundColor:
                                 selected ? kPrimaryOrange : Colors.black45,
@@ -1273,10 +1312,10 @@ class _GeoapifyMapPicker extends StatelessWidget {
                     child: TextButton.icon(
                       onPressed: loading ? null : onUseCurrentLocation,
                       icon: loading
-                          ? const SizedBox(
+                          ? const SkeletonBox(
                               width: 16,
                               height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              radius: 4,
                             )
                           : const Icon(Icons.my_location, size: 18),
                       label: const Text('GPS'),
@@ -1488,107 +1527,324 @@ class _SegmentButton extends StatelessWidget {
   }
 }
 
-class _VehicleChip extends StatelessWidget {
+class _VehicleSelectionCard extends StatelessWidget {
   final String label;
+  final String capacity;
+  final String? assetPath;
+  final IconData fallbackIcon;
   final double? amount;
   final bool selected;
+  final bool recommended;
   final VoidCallback onTap;
 
-  const _VehicleChip({
+  const _VehicleSelectionCard({
     required this.label,
+    required this.capacity,
+    required this.assetPath,
+    required this.fallbackIcon,
     required this.amount,
     required this.selected,
+    required this.recommended,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final borderRadius = BorderRadius.circular(8);
+
     return Semantics(
       button: true,
       selected: selected,
-      label: label,
+      label: '$label, $capacity',
       child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(999),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(999),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-            decoration: BoxDecoration(
-              color: selected ? kPrimaryOrange : Colors.white,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: selected ? kPrimaryOrange : const Color(0xFFE3E3E3),
+          color: Colors.transparent,
+          borderRadius: borderRadius,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: borderRadius,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              decoration: BoxDecoration(
+                color: selected ? const Color(0xFFFFFBF8) : Colors.white,
+                borderRadius: borderRadius,
+                border: Border.all(
+                  color: selected ? kPrimaryOrange : const Color(0xFFE8E8E8),
+                  width: selected ? 1.5 : 1,
+                ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x0C000000),
+                    blurRadius: 8,
+                    offset: Offset(0, 3),
+                  ),
+                ],
               ),
-              boxShadow: selected
-                  ? const [
-                      BoxShadow(
-                        color: Color(0x1FE64A19),
-                        blurRadius: 12,
-                        offset: Offset(0, 6),
+              child: Stack(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 28, 10, 10),
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          height: 64,
+                          child: assetPath == null
+                              ? Icon(
+                                  fallbackIcon,
+                                  color: const Color(0xFF777777),
+                                  size: 52,
+                                )
+                              : Image.asset(
+                                  assetPath!,
+                                  cacheWidth: 320,
+                                  filterQuality: FilterQuality.medium,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (_, __, ___) => Icon(
+                                    fallbackIcon,
+                                    color: const Color(0xFF777777),
+                                    size: 52,
+                                  ),
+                                ),
+                        ),
+                        const SizedBox(height: 7),
+                        SizedBox(
+                          height: 34,
+                          child: Center(
+                            child: Text(
+                              label,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Color(0xFF303030),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                height: 1.15,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.inventory_2_outlined,
+                              color: Color(0xFF8A8A8A),
+                              size: 12,
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                capacity,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFF8A8A8A),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Spacer(),
+                        Text(
+                          amount == null
+                              ? 'Price on route'
+                              : 'Rs ${amount!.toStringAsFixed(0)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: kPrimaryOrange,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (recommended)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: kPrimaryOrange,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'Recommended',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                       ),
-                    ]
-                  : null,
-            ),
-            child: Text(
-              amount == null
-                  ? label
-                  : '$label  Rs ${amount!.toStringAsFixed(0)}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: selected ? Colors.white : const Color(0xB8000000),
-                fontWeight: FontWeight.w800,
+                    ),
+                  if (selected)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: const BoxDecoration(
+                          color: kPrimaryOrange,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.check,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
-        ),
       ),
     );
   }
 }
 
-class _SuggestVehicleChip extends StatelessWidget {
+class _SuggestVehicleCard extends StatelessWidget {
+  final String? suggestedVehicle;
   final VoidCallback onTap;
 
-  const _SuggestVehicleChip({required this.onTap});
+  const _SuggestVehicleCard({
+    required this.suggestedVehicle,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(999),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFF0EA),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: const Color(0xFFFFD2C2)),
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.auto_awesome, color: kPrimaryOrange, size: 17),
-              SizedBox(width: 7),
-              Text(
-                'Suggest me',
-                style: TextStyle(
-                  color: kPrimaryOrange,
-                  fontWeight: FontWeight.w800,
+    final borderRadius = BorderRadius.circular(8);
+    final suggestion = suggestedVehicle?.trim();
+    final hasSuggestion = suggestion != null && suggestion.isNotEmpty;
+
+    return Semantics(
+      button: true,
+      label: hasSuggestion
+          ? 'Suggest me. Recommended: $suggestion'
+          : 'Suggest a vehicle',
+      child: Material(
+          color: Colors.transparent,
+          borderRadius: borderRadius,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: borderRadius,
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFAF7),
+                borderRadius: borderRadius,
+                border: Border.all(color: const Color(0xFFFFC9B9)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 54,
+                      height: 54,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFFFEEE7),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.auto_awesome_rounded,
+                        color: kPrimaryOrange,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Suggest me',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: kPrimaryOrange,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      hasSuggestion ? suggestion : 'Select route first',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFF8A6B61),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
+            ),
           ),
-        ),
       ),
     );
   }
+}
+
+class _VehiclePresentation {
+  final String? assetPath;
+  final String capacity;
+  final IconData fallbackIcon;
+
+  const _VehiclePresentation({
+    required this.assetPath,
+    required this.capacity,
+    required this.fallbackIcon,
+  });
+}
+
+_VehiclePresentation _vehiclePresentationFor(String vehicleType) {
+  final normalized = vehicleType.toLowerCase();
+
+  if (normalized.contains('tata ace')) {
+    return const _VehiclePresentation(
+      assetPath: 'assets/vehicles/tata_ace.png',
+      capacity: 'Up to 750 kg',
+      fallbackIcon: Icons.local_shipping_outlined,
+    );
+  }
+  if (normalized.contains('3 wheeler') || normalized.contains('ape')) {
+    return const _VehiclePresentation(
+      assetPath: 'assets/vehicles/three_wheeler_ape.png',
+      capacity: 'Up to 400 kg',
+      fallbackIcon: Icons.electric_rickshaw_outlined,
+    );
+  }
+  if (normalized.contains('dost')) {
+    return const _VehiclePresentation(
+      assetPath: 'assets/vehicles/dost.png',
+      capacity: 'Up to 1250 kg',
+      fallbackIcon: Icons.local_shipping_outlined,
+    );
+  }
+  if (normalized.contains('407') || normalized.contains('water tanker')) {
+    return const _VehiclePresentation(
+      assetPath: 'assets/vehicles/tata_407.png',
+      capacity: 'Up to 3000 L',
+      fallbackIcon: Icons.local_shipping_outlined,
+    );
+  }
+  return const _VehiclePresentation(
+    assetPath: null,
+    capacity: 'Capacity on request',
+    fallbackIcon: Icons.local_shipping_outlined,
+  );
 }
 
 class _SectionTitle extends StatelessWidget {

@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loadr/main.dart';
+import 'package:loadr/widgets/skeleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -10,6 +10,6 @@ void main() {
 
     await tester.pumpWidget(const LoadRApp());
 
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(SkeletonBox), findsOneWidget);
   });
 }

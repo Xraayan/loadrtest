@@ -8,6 +8,7 @@ import 'package:loadr/navigation_observer.dart';
 import 'package:loadr/services/api_service.dart';
 import 'package:loadr/widgets/bottom_nav.dart';
 import 'package:loadr/widgets/online_toggle.dart';
+import 'package:loadr/widgets/skeleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -17,12 +18,15 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => DashboardScreenState();
 }
 
-class DashboardScreenState extends State<DashboardScreen> with RouteAware {
+class DashboardScreenState extends State<DashboardScreen>
+    with RouteAware, WidgetsBindingObserver {
   Timer? _statusTimer;
   StreamSubscription<Position>? _locationSubscription;
   ModalRoute<dynamic>? _route;
   bool _routeVisible = true;
+  bool _appIsForeground = true;
   bool _isSyncing = false;
+  bool _hasLoadedCachedData = false;
   bool _isOnline = true;
   String? _uid;
   String _driverName = 'Driver';
@@ -34,7 +38,8 @@ class DashboardScreenState extends State<DashboardScreen> with RouteAware {
   @override
   void initState() {
     super.initState();
-    _loadCachedDriverData();
+    WidgetsBinding.instance.addObserver(this);
+    _loadInitialDashboard();
     _statusTimer = Timer.periodic(
       const Duration(seconds: 20),
       (_) {
@@ -69,11 +74,33 @@ class DashboardScreenState extends State<DashboardScreen> with RouteAware {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final appIsForeground = state == AppLifecycleState.resumed;
+    if (_appIsForeground == appIsForeground) return;
+    _appIsForeground = appIsForeground;
+    _syncLocationTracking();
+    if (appIsForeground && _routeVisible) {
+      _syncDriverDataFromBackend();
+    }
+  }
+
+  @override
   void dispose() {
     routeObserver.unsubscribe(this);
+    WidgetsBinding.instance.removeObserver(this);
     _statusTimer?.cancel();
-    _locationSubscription?.cancel();
+    _stopLocationTracking();
     super.dispose();
+  }
+
+  Future<void> _refreshDashboard() async {
+    await _loadCachedDriverData();
+    await _syncDriverDataFromBackend();
+  }
+
+  Future<void> _loadInitialDashboard() async {
+    await _loadCachedDriverData();
+    unawaited(_syncDriverDataFromBackend());
   }
 
   Future<void> _loadCachedDriverData() async {
@@ -108,12 +135,12 @@ class DashboardScreenState extends State<DashboardScreen> with RouteAware {
           ((latitude != null && longitude != null)
               ? '${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)}'
               : 'Kottayam, Kerala');
+      _hasLoadedCachedData = true;
     });
     _syncLocationTracking();
     if (cleanedLocationLabel == null && latitude != null && longitude != null) {
       _setCityFromCoordinates(latitude, longitude);
     }
-    _syncDriverDataFromBackend();
   }
 
   Future<void> _setOnline(bool value) async {
@@ -198,9 +225,12 @@ class DashboardScreenState extends State<DashboardScreen> with RouteAware {
 
   void _syncLocationTracking() {
     final uid = _uid;
-    if (ApiService.isLoggingOut || !_routeVisible || !_isOnline || uid == null) {
-      _locationSubscription?.cancel();
-      _locationSubscription = null;
+    if (ApiService.isLoggingOut ||
+        !_routeVisible ||
+        !_appIsForeground ||
+        !_isOnline ||
+        uid == null) {
+      _stopLocationTracking();
       return;
     }
     if (_locationSubscription != null) return;
@@ -224,79 +254,93 @@ class DashboardScreenState extends State<DashboardScreen> with RouteAware {
     }, onError: (_) {});
   }
 
+  void _stopLocationTracking() {
+    final subscription = _locationSubscription;
+    _locationSubscription = null;
+    subscription?.cancel();
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!_hasLoadedCachedData) {
+      return const _DashboardSkeleton();
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F7),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-          children: [
-            _DashboardHeader(
-              greeting: '${_greeting()}, $_driverName',
-              onProfileTap: () async {
-                await Navigator.pushNamed(context, '/profile');
-                if (mounted) _loadCachedDriverData();
-              },
-            ),
-            const SizedBox(height: 18),
-            _AvailabilityCard(
-              isOnline: _isOnline,
-              vehicleNumber: _vehicleNumber,
-              locationText: _locationText,
-              onToggle: _setOnline,
-            ),
-            const SizedBox(height: 22),
-            const Text(
-              'Quick actions',
-              style: TextStyle(
-                color: Colors.black87,
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
+        child: RefreshIndicator(
+          onRefresh: _refreshDashboard,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+            children: [
+              _DashboardHeader(
+                greeting: '${_greeting()}, $_driverName',
+                onProfileTap: () async {
+                  await Navigator.pushNamed(context, '/profile');
+                  if (mounted) _refreshDashboard();
+                },
               ),
-            ),
-            const SizedBox(height: 12),
-            _PrimaryActionCard(
-              job: _activeJob,
-              openLoadCount: _openLoadCount,
-              onTap: () async {
-                await Navigator.pushNamed(
-                  context,
-                  _activeJob == null ? '/new-trips' : '/driver-active-trip',
-                  arguments: _activeJob,
-                );
-                if (mounted) _syncDriverDataFromBackend();
-              },
-            ),
-            const SizedBox(height: 12),
-            GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.55,
-              children: const [
-                _DriverActionCard(
-                  title: 'All Trips',
-                  subtitle: 'Manage accepted trips',
-                  icon: Icons.route_outlined,
-                  route: '/all-trips',
+              const SizedBox(height: 18),
+              _AvailabilityCard(
+                isOnline: _isOnline,
+                vehicleNumber: _vehicleNumber,
+                locationText: _locationText,
+                onToggle: _setOnline,
+              ),
+              const SizedBox(height: 22),
+              const Text(
+                'Quick actions',
+                style: TextStyle(
+                  color: Colors.black87,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
                 ),
-                _DriverActionCard(
-                  title: 'Wallet',
-                  subtitle: 'View payouts',
-                  icon: Icons.account_balance_wallet_outlined,
-                  route: '/wallet-deposit',
-                ),
-                _DriverActionCard(
-                  title: 'Support',
-                  subtitle: 'Get help quickly',
-                  icon: Icons.support_agent,
-                ),
-              ],
-            ),
-          ],
+              ),
+              const SizedBox(height: 12),
+              _PrimaryActionCard(
+                job: _activeJob,
+                openLoadCount: _openLoadCount,
+                onTap: () async {
+                  await Navigator.pushNamed(
+                    context,
+                    _activeJob == null ? '/new-trips' : '/driver-active-trip',
+                    arguments: _activeJob,
+                  );
+                  if (mounted) _syncDriverDataFromBackend();
+                },
+              ),
+              const SizedBox(height: 12),
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 1.55,
+                children: const [
+                  _DriverActionCard(
+                    title: 'All Trips',
+                    subtitle: 'Manage accepted trips',
+                    icon: Icons.route_outlined,
+                    route: '/all-trips',
+                  ),
+                  _DriverActionCard(
+                    title: 'Wallet',
+                    subtitle: 'View payouts',
+                    icon: Icons.account_balance_wallet_outlined,
+                    route: '/wallet-deposit',
+                  ),
+                  _DriverActionCard(
+                    title: 'Support',
+                    subtitle: 'Get help quickly',
+                    icon: Icons.support_agent,
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
       bottomNavigationBar: const BottomNav(selectedIndex: 0),
@@ -347,6 +391,66 @@ class DashboardScreenState extends State<DashboardScreen> with RouteAware {
   }
 }
 
+class _DashboardSkeleton extends StatelessWidget {
+  const _DashboardSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F7F7),
+      body: SafeArea(
+        child: ListView(
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          children: const [
+            Row(
+              children: [
+                Expanded(child: SkeletonBox(height: 31, radius: 8)),
+                SizedBox(width: 14),
+                SkeletonBox(width: 48, height: 48, radius: 24),
+              ],
+            ),
+            SizedBox(height: 18),
+            SkeletonBox(height: 206, radius: 16),
+            SizedBox(height: 22),
+            SkeletonBox(width: 112, height: 18, radius: 5),
+            SizedBox(height: 12),
+            SkeletonBox(
+              height: 162,
+              radius: 16,
+              color: Color(0xFFEEDDD6),
+            ),
+            SizedBox(height: 12),
+            _DashboardActionGridSkeleton(),
+          ],
+        ),
+      ),
+      bottomNavigationBar: const BottomNav(selectedIndex: 0),
+    );
+  }
+}
+
+class _DashboardActionGridSkeleton extends StatelessWidget {
+  const _DashboardActionGridSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 2,
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      childAspectRatio: 1.55,
+      children: const [
+        SkeletonBox(height: 100, radius: 14),
+        SkeletonBox(height: 100, radius: 14),
+        SkeletonBox(height: 100, radius: 14),
+      ],
+    );
+  }
+}
+
 class _DashboardHeader extends StatelessWidget {
   final String greeting;
   final VoidCallback onProfileTap;
@@ -375,7 +479,7 @@ class _DashboardHeader extends StatelessWidget {
         ),
         const SizedBox(width: 14),
         Material(
-          color: kPrimaryOrange.withOpacity(0.11),
+          color: kPrimaryOrange.withValues(alpha: 0.11),
           shape: const CircleBorder(),
           child: InkWell(
             onTap: onProfileTap,
@@ -633,7 +737,7 @@ class _PrimaryActionCard extends StatelessWidget {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.18),
+                      color: Colors.white.withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: const Icon(
