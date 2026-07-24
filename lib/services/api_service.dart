@@ -707,7 +707,7 @@ class ApiService {
   static Stream<Map<String, dynamic>?> streamCustomerActiveJob(
     String uid, {
     String? jobId,
-  ) async* {
+  }) async* {
     final client = http.Client();
     try {
       final token = await getAuthToken();
