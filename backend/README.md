@@ -10,7 +10,8 @@ Current demo direction:
 - Supabase Storage for driver documents
 
 Driver location writes go to Supabase `driver_locations`. Enable Realtime for
-that table in Supabase to inspect live updates.
+that table in Supabase; Flutter subscribes directly when built with
+`SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`.
 
 ## Setup
 
@@ -40,6 +41,7 @@ pip install -r requirements.txt
 - Verify the private Storage bucket named `driver-documents`
 - Apply the project's Supabase schema and policies from your local setup notes. These SQL setup files are intentionally ignored because they are demo/environment setup artifacts.
 - In Supabase Realtime, enable/listen to `public.driver_locations` to see live driver GPS rows.
+- For Flutter builds, pass `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` with `--dart-define`. Never put the service role key in Flutter.
 
 ### 5. Run the Server
 ```bash

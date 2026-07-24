@@ -127,6 +127,7 @@ Note:
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 SUPABASE_STORAGE_BUCKET=driver-documents
+SUPABASE_PUBLISHABLE_KEY=
 ```
 
 Important:
@@ -134,6 +135,7 @@ Important:
 - `SUPABASE_SERVICE_ROLE_KEY` is secret.
 - Only the backend should have it.
 - Never put it in Flutter.
+- `SUPABASE_PUBLISHABLE_KEY` is safe for Flutter. Get it from Supabase Dashboard -> Connect -> Flutter.
 
 ### Geoapify
 
@@ -428,6 +430,18 @@ Used for:
 - Nearby driver markers.
 - Auto-marking `arriving` when driver is near pickup.
 
+Supabase Realtime setup:
+
+1. Open Supabase Dashboard -> Realtime.
+2. Go to Settings and make sure `public.driver_locations` is enabled.
+3. Run `backend/supabase_policies.sql` in SQL Editor after schema changes.
+4. In Inspector, choose `postgres`, table `driver_locations`, then Start listening.
+5. Move the driver app while online; rows should update immediately.
+
+Current demo policy note: active driver locations are readable by the app client
+so Flutter can subscribe directly. For production, tighten this to only the
+assigned customer/driver after Firebase Auth is wired into Flutter.
+
 ### Notifications
 
 ```text
@@ -532,6 +546,12 @@ EMAIL_STRICT_SEND=true
 
 ALLOW_CUSTOM_TOKEN_AUTH=false
 SEED_FIREBASE_DATA=false
+```
+
+Flutter release build vars:
+
+```bash
+flutter build apk --release --dart-define=API_BASE_URL=https://your-railway-domain.up.railway.app/api --dart-define=SUPABASE_URL=https://your-project-ref.supabase.co --dart-define=SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 ```
 
 Test after deploy:

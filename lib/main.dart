@@ -14,6 +14,7 @@ import 'package:loadr/screens/profile_screen.dart';
 import 'package:loadr/screens/request_quote_screen.dart';
 import 'package:loadr/screens/request_vehicle_screen.dart';
 import 'package:loadr/screens/wallet_deposit_screen.dart';
+import 'package:loadr/services/supabase_realtime_service.dart';
 import 'constants.dart';
 import 'navigation_observer.dart';
 import 'screens/activation_success_screen.dart';
@@ -26,8 +27,9 @@ import 'screens/otp_screen.dart';
 import 'screens/location_screen.dart';
 import 'screens/vehicle_selection_screen.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SupabaseRealtimeService.initialize();
   runApp(const LoadRApp());
 }
 

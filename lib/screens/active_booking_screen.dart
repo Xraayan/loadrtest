@@ -7,8 +7,10 @@ import 'package:latlong2/latlong.dart';
 import 'package:loadr/constants.dart';
 import 'package:loadr/models/place_suggestion.dart';
 import 'package:loadr/services/api_service.dart';
+import 'package:loadr/services/supabase_realtime_service.dart';
 import 'package:loadr/widgets/skeleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ActiveBookingScreen extends StatefulWidget {
   const ActiveBookingScreen({super.key});
@@ -26,6 +28,8 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
   bool _isRefreshingRoute = false;
   DateTime? _lastRouteRefreshAt;
   StreamSubscription<Map<String, dynamic>?>? _bookingSubscription;
+  RealtimeChannel? _driverLocationChannel;
+  String? _driverLocationUid;
 
   @override
   void initState() {
@@ -46,6 +50,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
         _booking = cachedBooking;
         _isLoading = false;
       });
+      _syncDriverLocationChannel(cachedBooking);
       _refreshBadRoute(cachedBooking);
     }
 
@@ -81,6 +86,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
       _isLoading = false;
     });
     _refreshBadRoute(booking);
+    _syncDriverLocationChannel(booking);
     if (uid != null) _startBookingStream(uid, _jobIdFromBooking(booking));
   }
 
@@ -123,6 +129,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
 
       if (!mounted) return;
       setState(() => _booking = merged);
+      _syncDriverLocationChannel(merged);
       _refreshBadRoute(merged);
     } catch (e) {
       if (mounted && showErrors) {
@@ -152,18 +159,54 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
                 ? null
                 : {...current, 'status': 'completed'};
           });
+          _syncDriverLocationChannel(_booking);
           return;
         }
 
         final current = _booking;
         final next = current == null ? job : _mergeJobIntoBooking(current, job);
         setState(() => _booking = next);
+        _syncDriverLocationChannel(next);
         _refreshBadRoute(next);
       },
       onError: (_) {
         // Cached/manual refresh keeps the screen usable if the stream drops.
       },
     );
+  }
+
+  void _syncDriverLocationChannel(Map<String, dynamic>? booking) {
+    final driverUid = _driverUidFromBooking(booking);
+    if (driverUid == _driverLocationUid) return;
+
+    unawaited(SupabaseRealtimeService.removeChannel(_driverLocationChannel));
+    _driverLocationChannel = null;
+    _driverLocationUid = driverUid;
+    if (driverUid == null) return;
+
+    _driverLocationChannel = SupabaseRealtimeService.subscribeToDriverLocation(
+      driverUid: driverUid,
+      onLocation: _applyRealtimeDriverLocation,
+    );
+  }
+
+  void _applyRealtimeDriverLocation(Map<String, dynamic> location) {
+    if (!mounted) return;
+    final booking = _booking;
+    if (booking == null) return;
+
+    final driver = booking['driver'];
+    final driverMap =
+        driver is Map ? Map<String, dynamic>.from(driver) : <String, dynamic>{};
+    final next = {
+      ...booking,
+      'driver': {
+        ...driverMap,
+        'uid': _driverLocationUid,
+        'current_location': location,
+      },
+    };
+    setState(() => _booking = next);
   }
 
   Map<String, dynamic> _mergeJobIntoBooking(
@@ -364,6 +407,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
       await ApiService.cancelJob(jobId);
       if (!mounted) return;
       setState(() => _booking = null);
+      _syncDriverLocationChannel(null);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Pickup cancelled')),
       );
@@ -383,6 +427,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
   @override
   void dispose() {
     _bookingSubscription?.cancel();
+    unawaited(SupabaseRealtimeService.removeChannel(_driverLocationChannel));
     super.dispose();
   }
 }
@@ -1329,4 +1374,16 @@ String _shortLocation(String value) {
 String? _jobIdFromBooking(Map<String, dynamic>? booking) {
   final jobId = _text(booking?['job_id'], fallback: _text(booking?['id']));
   return jobId.isEmpty ? null : jobId;
+}
+
+String? _driverUidFromBooking(Map<String, dynamic>? booking) {
+  final assignedUid = _text(booking?['assigned_driver_uid']);
+  if (assignedUid.isNotEmpty) return assignedUid;
+
+  final driver = booking?['driver'];
+  if (driver is Map) {
+    final uid = _text(driver['uid'], fallback: _text(driver['firebase_uid']));
+    if (uid.isNotEmpty) return uid;
+  }
+  return null;
 }
