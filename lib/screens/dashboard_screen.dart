@@ -238,7 +238,7 @@ class DashboardScreenState extends State<DashboardScreen>
     _locationSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 100,
+        distanceFilter: 15,
       ),
     ).listen((position) async {
       if (ApiService.isLoggingOut || !_routeVisible) return;

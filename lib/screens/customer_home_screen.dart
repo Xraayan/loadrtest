@@ -15,8 +15,11 @@ class CustomerHomeScreen extends StatefulWidget {
 
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   String _displayName = 'Customer';
-  Map<String, dynamic>? _activeBooking;
+  List<Map<String, dynamic>> _activeBookings = [];
   bool _isLoadingHome = true;
+
+  Map<String, dynamic>? get _activeBooking =>
+      _activeBookings.isEmpty ? null : _activeBookings.first;
 
   @override
   void initState() {
@@ -28,38 +31,80 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final name = prefs.getString('customer_name');
-      final activeBookingJson = prefs.getString('active_booking');
-      Map<String, dynamic>? activeBooking;
-      if (activeBookingJson != null && activeBookingJson.trim().isNotEmpty) {
-        try {
-          final decoded = jsonDecode(activeBookingJson);
-          if (decoded is Map) {
-            activeBooking = Map<String, dynamic>.from(decoded);
-          }
-        } catch (_) {
-          await prefs.remove('active_booking');
-        }
-      }
+      final activeBookings = await _readCachedActiveBookings(prefs);
 
       if (!mounted) return;
       setState(() {
         if (name != null && name.trim().isNotEmpty) {
           _displayName = name.trim();
         }
-        _activeBooking = activeBooking;
+        _activeBookings = activeBookings;
         _isLoadingHome = false;
       });
 
       final uid = prefs.getString('uid');
       if (uid != null && uid.trim().isNotEmpty) {
-        final backendBooking = await ApiService.getCustomerActiveJob(uid);
+        final backendBookings = await ApiService.getCustomerActiveJobs(uid);
+        await _cacheActiveBookings(prefs, backendBookings);
         if (!mounted) return;
-        setState(() => _activeBooking = backendBooking);
+        setState(() => _activeBookings = backendBookings);
       }
     } catch (_) {
       // Keep cached dashboard data while the backend is unavailable.
       if (mounted) setState(() => _isLoadingHome = false);
     }
+  }
+
+  Future<List<Map<String, dynamic>>> _readCachedActiveBookings(
+    SharedPreferences prefs,
+  ) async {
+    final activeBookingsJson = prefs.getString('active_bookings');
+    if (activeBookingsJson != null && activeBookingsJson.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(activeBookingsJson);
+        if (decoded is List) {
+          return decoded
+              .whereType<Map>()
+              .map((booking) => Map<String, dynamic>.from(booking))
+              .toList();
+        }
+      } catch (_) {
+        await prefs.remove('active_bookings');
+      }
+    }
+
+    final activeBookingJson = prefs.getString('active_booking');
+    if (activeBookingJson == null || activeBookingJson.trim().isEmpty) {
+      return [];
+    }
+    try {
+      final decoded = jsonDecode(activeBookingJson);
+      if (decoded is Map) return [Map<String, dynamic>.from(decoded)];
+    } catch (_) {
+      await prefs.remove('active_booking');
+    }
+    return [];
+  }
+
+  Future<void> _cacheActiveBookings(
+    SharedPreferences prefs,
+    List<Map<String, dynamic>> bookings,
+  ) async {
+    if (bookings.isEmpty) {
+      await prefs.remove('active_bookings');
+      await prefs.remove('active_booking');
+      return;
+    }
+    await prefs.setString('active_bookings', jsonEncode(bookings));
+    await prefs.setString('active_booking', jsonEncode(bookings.first));
+  }
+
+  Future<void> _openActiveBooking(Map<String, dynamic> booking) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('active_booking', jsonEncode(booking));
+    if (!mounted) return;
+    await Navigator.pushNamed(context, '/active-booking');
+    if (mounted) _loadHeader();
   }
 
   @override
@@ -198,20 +243,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                           title: 'Active Bookings',
                           subtitle: _activeBooking == null
                               ? 'Track current moves'
-                              : _bookingTileSubtitle(_activeBooking!),
+                              : _activeBookings.length == 1
+                                  ? _bookingTileSubtitle(_activeBooking!)
+                                  : '${_activeBookings.length} active moves',
                           icon: Icons.route_outlined,
                           active: _activeBooking != null,
                           onTap: _activeBooking == null
                               ? null
-                              : () async {
-                                  await Navigator.pushNamed(
-                                    context,
-                                    '/active-booking',
-                                  );
-                                  if (mounted) {
-                                    _loadHeader();
-                                  }
-                                },
+                              : () => _openActiveBooking(_activeBooking!),
                         ),
                         const _CustomerActionCard(
                           title: 'Saved Places',
@@ -233,17 +272,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     const SizedBox(height: 22),
                     _activeBooking == null
                         ? const _EmptyBookingCard()
-                        : _ActiveBookingCard(
-                            booking: _activeBooking!,
-                            onTap: () async {
-                              await Navigator.pushNamed(
-                                context,
-                                '/active-booking',
-                              );
-                              if (mounted) {
-                                _loadHeader();
-                              }
-                            },
+                        : Column(
+                            children: [
+                              for (final booking in _activeBookings) ...[
+                                _ActiveBookingCard(
+                                  booking: booking,
+                                  onTap: () => _openActiveBooking(booking),
+                                ),
+                                if (booking != _activeBookings.last)
+                                  const SizedBox(height: 12),
+                              ],
+                            ],
                           ),
                   ],
                 ),

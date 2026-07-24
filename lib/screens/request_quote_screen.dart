@@ -120,39 +120,54 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
   }) async {
     final prefs = await SharedPreferences.getInstance();
 
-    await prefs.setString(
-      'active_booking',
-      jsonEncode({
-        'job_id': '${response['job_id'] ?? ''}',
-        'pickup_location': args.pickup.displayName,
-        'dropoff_location': args.drop.displayName,
-        'pickup_coords': {
-          'latitude': args.pickup.latitude,
-          'longitude': args.pickup.longitude,
-        },
-        'dropoff_coords': {
-          'latitude': args.drop.latitude,
-          'longitude': args.drop.longitude,
-        },
-        'vehicle_type': args.vehicleType,
-        'schedule': args.schedule,
-        'amount': quote.amount,
-        'distance_km': args.estimate.distanceKm,
-        'route_points': args.estimate.routePoints
-            .map(
-              (point) => {
-                'latitude': point.latitude,
-                'longitude': point.longitude,
-              },
-            )
-            .toList(),
-        'status': 'open',
-        'city': args.estimate.city,
-        'district': args.estimate.district,
-        'state': args.estimate.state,
-        'created_at': DateTime.now().toIso8601String(),
-      }),
-    );
+    final booking = <String, dynamic>{
+      'job_id': '${response['job_id'] ?? ''}',
+      'pickup_location': args.pickup.displayName,
+      'dropoff_location': args.drop.displayName,
+      'pickup_coords': {
+        'latitude': args.pickup.latitude,
+        'longitude': args.pickup.longitude,
+      },
+      'dropoff_coords': {
+        'latitude': args.drop.latitude,
+        'longitude': args.drop.longitude,
+      },
+      'vehicle_type': args.vehicleType,
+      'schedule': args.schedule,
+      'amount': quote.amount,
+      'distance_km': args.estimate.distanceKm,
+      'route_points': args.estimate.routePoints
+          .map(
+            (point) => {
+              'latitude': point.latitude,
+              'longitude': point.longitude,
+            },
+          )
+          .toList(),
+      'status': 'open',
+      'city': args.estimate.city,
+      'district': args.estimate.district,
+      'state': args.estimate.state,
+      'created_at': DateTime.now().toIso8601String(),
+    };
+    await prefs.setString('active_booking', jsonEncode(booking));
+
+    final bookings = <Map<String, dynamic>>[booking];
+    final existingJson = prefs.getString('active_bookings');
+    if (existingJson != null && existingJson.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(existingJson);
+        if (decoded is List) {
+          bookings.addAll(
+            decoded
+                .whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item))
+                .where((item) => item['job_id'] != booking['job_id']),
+          );
+        }
+      } catch (_) {}
+    }
+    await prefs.setString('active_bookings', jsonEncode(bookings));
   }
 
   @override

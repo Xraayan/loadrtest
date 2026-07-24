@@ -60,7 +60,10 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
     try {
       uid = await ApiService.getUid();
       if (uid != null) {
-        final backendBooking = await ApiService.getCustomerActiveJob(uid);
+        final backendBooking = await ApiService.getCustomerActiveJob(
+          uid,
+          jobId: _jobIdFromBooking(booking),
+        );
         if (backendBooking != null) {
           booking = booking == null
               ? backendBooking
@@ -78,7 +81,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
       _isLoading = false;
     });
     _refreshBadRoute(booking);
-    if (uid != null) _startBookingStream(uid);
+    if (uid != null) _startBookingStream(uid, _jobIdFromBooking(booking));
   }
 
   Future<Map<String, dynamic>?> _readLocalBooking() async {
@@ -134,9 +137,12 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
     }
   }
 
-  void _startBookingStream(String uid) {
+  void _startBookingStream(String uid, String? jobId) {
     _bookingSubscription?.cancel();
-    _bookingSubscription = ApiService.streamCustomerActiveJob(uid).listen(
+    _bookingSubscription = ApiService.streamCustomerActiveJob(
+      uid,
+      jobId: jobId,
+    ).listen(
       (job) {
         if (!mounted) return;
         if (job == null) {
@@ -1318,4 +1324,9 @@ String _shortLocation(String value) {
       .toList();
   if (parts.isEmpty) return value;
   return parts.first;
+}
+
+String? _jobIdFromBooking(Map<String, dynamic>? booking) {
+  final jobId = _text(booking?['job_id'], fallback: _text(booking?['id']));
+  return jobId.isEmpty ? null : jobId;
 }

@@ -368,7 +368,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
     _positionSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 50,
+        distanceFilter: 10,
       ),
     ).listen((position) async {
       final point = LatLng(position.latitude, position.longitude);

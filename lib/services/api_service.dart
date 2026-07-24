@@ -627,11 +627,19 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>?> getCustomerActiveJob(String uid) async {
+  static Future<Map<String, dynamic>?> getCustomerActiveJob(
+    String uid, {
+    String? jobId,
+  }) async {
     try {
       final token = await getAuthToken();
+      final uri = Uri.parse('$baseUrl/jobs/customer/$uid/active').replace(
+        queryParameters: {
+          if (jobId != null && jobId.trim().isNotEmpty) 'job_id': jobId.trim(),
+        },
+      );
       final response = await http.get(
-        Uri.parse('$baseUrl/jobs/customer/$uid/active'),
+        uri,
         headers: {
           'Content-Type': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
@@ -659,15 +667,58 @@ class ApiService {
     }
   }
 
-  static Stream<Map<String, dynamic>?> streamCustomerActiveJob(
+  static Future<List<Map<String, dynamic>>> getCustomerActiveJobs(
     String uid,
+  ) async {
+    try {
+      final token = await getAuthToken();
+      final response = await http.get(
+        Uri.parse('$baseUrl/jobs/customer/$uid/active'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) {
+        throw Exception(_errorMessage(
+          response.body,
+          fallback: 'Failed to get active bookings',
+        ));
+      }
+
+      final data = jsonDecode(response.body);
+      final jobs = data is Map ? data['jobs'] : null;
+      if (jobs is List) {
+        return jobs
+            .whereType<Map>()
+            .map((job) => Map<String, dynamic>.from(job))
+            .toList();
+      }
+
+      final job = data is Map ? data['job'] : null;
+      if (job is Map) return [Map<String, dynamic>.from(job)];
+      return [];
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  static Stream<Map<String, dynamic>?> streamCustomerActiveJob(
+    String uid, {
+    String? jobId,
   ) async* {
     final client = http.Client();
     try {
       final token = await getAuthToken();
+      final uri = Uri.parse('$baseUrl/jobs/customer/$uid/active/stream').replace(
+        queryParameters: {
+          if (jobId != null && jobId.trim().isNotEmpty) 'job_id': jobId.trim(),
+        },
+      );
       final request = http.Request(
         'GET',
-        Uri.parse('$baseUrl/jobs/customer/$uid/active/stream'),
+        uri,
       );
       request.headers.addAll({
         'Content-Type': 'application/json',

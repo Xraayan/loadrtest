@@ -1096,89 +1096,53 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return FractionallySizedBox(
-      heightFactor: 0.88,
-      child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.max,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 42,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE0E0E0),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'Set location on map',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _ScheduleSegmentedControl(
-                  selectedValue: _isPickup ? 'Pick-up' : 'Drop',
-                  values: const ['Pick-up', 'Drop'],
-                  icons: const [
-                    Icons.radio_button_checked,
-                    Icons.location_on_outlined,
-                  ],
-                  onChanged: (value) => _setField(value == 'Pick-up'),
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: _GeoapifyMapPicker(
-                    controller: _mapController,
-                    selectedPoint: _selectedPoint,
-                    selectedAddress: _selectedAddress,
-                    loading: _loading,
-                    resolvingAddress: _resolvingAddress,
-                    onPositionChanged: _setSelectedPoint,
-                    onUseCurrentLocation: _moveToCurrentLocation,
-                  ),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  _InlineMessage(text: _error!),
-                ],
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: _loading ? null : _confirm,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: kPrimaryOrange,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: const Text(
-                      'Confirm location',
-                      style: TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                ),
-              ],
+    return SizedBox.expand(
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: _GeoapifyMapPicker(
+              controller: _mapController,
+              selectedPoint: _selectedPoint,
+              onPositionChanged: _setSelectedPoint,
             ),
           ),
-        ),
+          Positioned(
+            left: 16,
+            top: 14,
+            child: SafeArea(
+              child: Material(
+                color: Colors.white,
+                shape: const CircleBorder(),
+                elevation: 3,
+                child: IconButton(
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close, color: Colors.black87),
+                ),
+              ),
+            ),
+          ),
+          DraggableScrollableSheet(
+            initialChildSize: 0.34,
+            minChildSize: 0.20,
+            maxChildSize: 0.62,
+            snap: true,
+            snapSizes: const [0.20, 0.34, 0.62],
+            builder: (context, scrollController) {
+              return _MapPickerPanel(
+                scrollController: scrollController,
+                isPickup: _isPickup,
+                selectedAddress: _selectedAddress,
+                loading: _loading,
+                resolvingAddress: _resolvingAddress,
+                error: _error,
+                onFieldChanged: (value) => _setField(value == 'Pick-up'),
+                onUseCurrentLocation: _moveToCurrentLocation,
+                onConfirm: _confirm,
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -1193,100 +1157,145 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
 class _GeoapifyMapPicker extends StatelessWidget {
   final MapController controller;
   final LatLng selectedPoint;
-  final String? selectedAddress;
-  final bool loading;
-  final bool resolvingAddress;
   final ValueChanged<LatLng> onPositionChanged;
-  final VoidCallback onUseCurrentLocation;
 
   const _GeoapifyMapPicker({
     required this.controller,
     required this.selectedPoint,
+    required this.onPositionChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: FlutterMap(
+            mapController: controller,
+            options: MapOptions(
+              initialCenter: selectedPoint,
+              initialZoom: 15,
+              minZoom: 4,
+              maxZoom: 20,
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.drag |
+                    InteractiveFlag.pinchZoom |
+                    InteractiveFlag.doubleTapZoom,
+              ),
+              onPositionChanged: (camera, hasGesture) {
+                if (hasGesture) onPositionChanged(camera.center);
+              },
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: ApiService.mapTileUrlTemplate,
+                retinaMode: false,
+                userAgentPackageName: 'com.example.loadr',
+                panBuffer: 0,
+                maxNativeZoom: 20,
+                maxZoom: 20,
+              ),
+              const RichAttributionWidget(
+                attributions: [
+                  TextSourceAttribution(
+                    'Geoapify | OpenStreetMap contributors',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const Center(
+          child: IgnorePointer(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: 22),
+              child: Icon(
+                Icons.location_on,
+                color: kPrimaryOrange,
+                size: 42,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MapPickerPanel extends StatelessWidget {
+  final ScrollController scrollController;
+  final bool isPickup;
+  final String? selectedAddress;
+  final bool loading;
+  final bool resolvingAddress;
+  final String? error;
+  final ValueChanged<String> onFieldChanged;
+  final VoidCallback onUseCurrentLocation;
+  final VoidCallback onConfirm;
+
+  const _MapPickerPanel({
+    required this.scrollController,
+    required this.isPickup,
     required this.selectedAddress,
     required this.loading,
     required this.resolvingAddress,
-    required this.onPositionChanged,
+    required this.error,
+    required this.onFieldChanged,
     required this.onUseCurrentLocation,
+    required this.onConfirm,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: const Color(0xFFF4F5F6),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE7E7E7)),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x22000000),
+            blurRadius: 22,
+            offset: Offset(0, -8),
+          ),
+        ],
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: FlutterMap(
-              mapController: controller,
-              options: MapOptions(
-                initialCenter: selectedPoint,
-                initialZoom: 15,
-                minZoom: 4,
-                maxZoom: 20,
-                interactionOptions: const InteractionOptions(
-                  flags: InteractiveFlag.drag |
-                      InteractiveFlag.pinchZoom |
-                      InteractiveFlag.doubleTapZoom,
+      child: SafeArea(
+        top: false,
+        child: ListView(
+          controller: scrollController,
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE0E0E0),
+                  borderRadius: BorderRadius.circular(999),
                 ),
-                onPositionChanged: (camera, hasGesture) {
-                  if (hasGesture) {
-                    onPositionChanged(camera.center);
-                  }
-                },
               ),
-              children: [
-                TileLayer(
-                  urlTemplate: ApiService.mapTileUrlTemplate,
-                  retinaMode: false,
-                  userAgentPackageName: 'com.example.loadr',
-                  panBuffer: 0,
-                  maxNativeZoom: 20,
-                  maxZoom: 20,
-                ),
-                const RichAttributionWidget(
-                  attributions: [
-                    TextSourceAttribution(
-                      'Geoapify | OpenStreetMap contributors',
-                    ),
-                  ],
-                ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Set location on map',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 12),
+            _ScheduleSegmentedControl(
+              selectedValue: isPickup ? 'Pick-up' : 'Drop',
+              values: const ['Pick-up', 'Drop'],
+              icons: const [
+                Icons.radio_button_checked,
+                Icons.location_on_outlined,
               ],
+              onChanged: onFieldChanged,
             ),
-          ),
-          const Center(
-            child: IgnorePointer(
-              child: Padding(
-                padding: EdgeInsets.only(bottom: 22),
-                child: Icon(
-                  Icons.location_on,
-                  color: kPrimaryOrange,
-                  size: 42,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 14,
-            right: 14,
-            bottom: 14,
-            child: Container(
+            const SizedBox(height: 12),
+            Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: const Color(0xFFF7F7F7),
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x14000000),
-                    blurRadius: 16,
-                    offset: Offset(0, 8),
-                  ),
-                ],
               ),
               child: Row(
                 children: [
@@ -1312,11 +1321,7 @@ class _GeoapifyMapPicker extends StatelessWidget {
                     child: TextButton.icon(
                       onPressed: loading ? null : onUseCurrentLocation,
                       icon: loading
-                          ? const SkeletonBox(
-                              width: 16,
-                              height: 16,
-                              radius: 4,
-                            )
+                          ? const SkeletonBox(width: 16, height: 16, radius: 4)
                           : const Icon(Icons.my_location, size: 18),
                       label: const Text('GPS'),
                       style: TextButton.styleFrom(
@@ -1331,8 +1336,32 @@ class _GeoapifyMapPicker extends StatelessWidget {
                 ],
               ),
             ),
-          ),
-        ],
+            if (error != null) ...[
+              const SizedBox(height: 12),
+              _InlineMessage(text: error!),
+            ],
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                onPressed: loading ? null : onConfirm,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kPrimaryOrange,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: const Text(
+                  'Confirm location',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

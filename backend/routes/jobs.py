@@ -190,7 +190,7 @@ def _active_assignment_for_driver(uid: str) -> Optional[dict]:
     }
 
 
-def _active_customer_job(uid: str) -> Optional[dict]:
+def _active_customer_jobs(uid: str) -> list[dict]:
     response = (
         get_supabase()
         .table("jobs")
@@ -201,10 +201,30 @@ def _active_customer_job(uid: str) -> Optional[dict]:
             ["open", "assigned", "accepted", "arriving", "in_progress"],
         )
         .order("created_at", desc=True)
-        .limit(1)
         .execute()
     )
-    jobs = response.data or []
+    return response.data or []
+
+
+def _active_customer_job(uid: str, job_id: Optional[str] = None) -> Optional[dict]:
+    if job_id:
+        job = (
+            get_supabase()
+            .table("jobs")
+            .select("*")
+            .eq("customer_uid", uid)
+            .eq("id", job_id)
+            .in_(
+                "status",
+                ["open", "assigned", "accepted", "arriving", "in_progress"],
+            )
+            .maybe_single()
+            .execute()
+            .data
+        )
+        return job
+
+    jobs = _active_customer_jobs(uid)
     return jobs[0] if jobs else None
 
 
@@ -316,25 +336,35 @@ def get_active_driver_job(
 @router.get("/customer/{uid}/active")
 def get_active_customer_job(
     uid: str,
+    job_id: Optional[str] = None,
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """Get the customer's latest open or assigned job."""
     require_current_user_uid(uid, current_user)
     try:
-        return _active_customer_payload(uid)
+        return _active_customer_payload(uid, job_id)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-def _active_customer_payload(uid: str) -> dict:
-    job = _active_customer_job(uid)
-    return {"job": _job_with_driver(job) if job else None}
+def _active_customer_payload(uid: str, job_id: Optional[str] = None) -> dict:
+    jobs = [_job_with_driver(job) for job in _active_customer_jobs(uid)]
+    if job_id:
+        job = _active_customer_job(uid, job_id)
+        return {"job": _job_with_driver(job) if job else None, "jobs": jobs}
+
+    job = next(
+        (item for item in jobs if item.get("job_id") == job_id),
+        jobs[0] if jobs else None,
+    )
+    return {"job": job, "jobs": jobs}
 
 
 @router.get("/customer/{uid}/active/stream")
 async def stream_active_customer_job(
     request: Request,
     uid: str,
+    job_id: Optional[str] = None,
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """Push customer job changes to the app without client-side polling."""
@@ -345,7 +375,7 @@ async def stream_active_customer_job(
         while not await request.is_disconnected():
             try:
                 payload = dumps(
-                    await run_in_threadpool(_active_customer_payload, uid),
+                    await run_in_threadpool(_active_customer_payload, uid, job_id),
                     default=str,
                     sort_keys=True,
                 )
