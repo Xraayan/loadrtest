@@ -223,6 +223,14 @@ This is not a Railway backend env. It is passed when building Flutter:
 flutter build apk --release --dart-define=API_BASE_URL=https://your-railway-domain.up.railway.app/api
 ```
 
+For direct phone testing, install:
+
+```text
+build/app/outputs/flutter-apk/app-release.apk
+```
+
+Do not install `app-release-unsigned.apk`; Android rejects unsigned release APKs.
+
 For debug:
 
 - Android emulator uses `http://10.0.2.2:8000/api`.
