@@ -13,8 +13,13 @@ def init_firebase():
         if firebase_admin._apps:
             return True
 
-        if settings.firebase_credentials_json:
-            firebase_info = json.loads(settings.firebase_credentials_json)
+        credentials_json = settings.firebase_credentials_json
+        if credentials_json:
+            firebase_info = (
+                json.loads(credentials_json)
+                if isinstance(credentials_json, str)
+                else credentials_json
+            )
             cred = credentials.Certificate(firebase_info)
         else:
             credentials_path = settings.firebase_credentials_path

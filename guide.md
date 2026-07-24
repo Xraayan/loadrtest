@@ -121,7 +121,7 @@ FIREBASE_DATABASE_URL=
 Note:
 
 - `FIREBASE_CREDENTIALS_PATH` means "read credentials from a file".
-- `FIREBASE_CREDENTIALS_JSON` means "read credentials directly from an env variable".
+- `FIREBASE_CREDENTIALS_JSON` means "read credentials directly from an env variable"; the backend accepts either a JSON string or Railway's parsed JSON object.
 - Railway should use `FIREBASE_CREDENTIALS_JSON` because secret files are awkward there.
 - Do not commit `firebase-credentials.json`.
 
