@@ -26,7 +26,6 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
   LatLng? _currentPoint;
   StreamSubscription<Position>? _positionSubscription;
   String? _driverUid;
-  bool _appIsForeground = true;
   bool _isLoading = true;
   bool _isUpdatingStatus = false;
   String? _error;
@@ -369,12 +368,20 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
   }
 
   void _startLocationUpdates(String uid) {
-    if (!_appIsForeground || _positionSubscription != null) return;
+    if (_positionSubscription != null) return;
     unawaited(_pushCurrentLocation(uid));
     _positionSubscription = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
+      locationSettings: AndroidSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 3,
+        intervalDuration: const Duration(seconds: 5),
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: 'LoadR active trip',
+          notificationText: 'Sharing your live location with the customer.',
+          notificationChannelName: 'Driver location',
+          enableWakeLock: true,
+          setOngoing: true,
+        ),
       ),
     ).listen((position) async {
       final point = LatLng(position.latitude, position.longitude);
@@ -428,11 +435,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    _appIsForeground = state == AppLifecycleState.resumed;
-    if (!_appIsForeground) {
-      _stopLocationUpdates();
-      return;
-    }
+    if (state != AppLifecycleState.resumed) return;
     final uid = _driverUid;
     if (uid != null && _job != null) _startLocationUpdates(uid);
   }

@@ -452,6 +452,17 @@ Current demo policy note: active driver locations are readable by the app client
 so Flutter can subscribe directly. For production, tighten this to only the
 assigned customer/driver after Firebase Auth is wired into Flutter.
 
+Android background driver tracking:
+
+1. Install the latest APK after this change.
+2. Open Android Settings -> Apps -> LoadR -> Permissions -> Location.
+3. Choose `Allow all the time` if Android shows it.
+4. On Oppo/ColorOS, also allow background running/autostart and disable battery optimization for LoadR.
+5. When tracking is active, Android should show a persistent `LoadR driver tracking` or `LoadR active trip` notification.
+
+If that notification is not visible, Android can stop location when the app is
+minimized and Supabase `driver_locations.updated_at` will stay old.
+
 ### Notifications
 
 ```text

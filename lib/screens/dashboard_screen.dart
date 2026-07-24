@@ -24,7 +24,6 @@ class DashboardScreenState extends State<DashboardScreen>
   StreamSubscription<Position>? _locationSubscription;
   ModalRoute<dynamic>? _route;
   bool _routeVisible = true;
-  bool _appIsForeground = true;
   bool _isSyncing = false;
   bool _hasLoadedCachedData = false;
   bool _isOnline = true;
@@ -75,11 +74,8 @@ class DashboardScreenState extends State<DashboardScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final appIsForeground = state == AppLifecycleState.resumed;
-    if (_appIsForeground == appIsForeground) return;
-    _appIsForeground = appIsForeground;
-    _syncLocationTracking();
-    if (appIsForeground && _routeVisible) {
+    if (state == AppLifecycleState.resumed && _routeVisible) {
+      _syncLocationTracking();
       _syncDriverDataFromBackend();
     }
   }
@@ -227,7 +223,6 @@ class DashboardScreenState extends State<DashboardScreen>
     final uid = _uid;
     if (ApiService.isLoggingOut ||
         !_routeVisible ||
-        !_appIsForeground ||
         !_isOnline ||
         uid == null) {
       _stopLocationTracking();
@@ -237,9 +232,17 @@ class DashboardScreenState extends State<DashboardScreen>
 
     unawaited(_pushCurrentLocation(uid));
     _locationSubscription = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
+      locationSettings: AndroidSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 5,
+        intervalDuration: const Duration(seconds: 5),
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: 'LoadR driver tracking',
+          notificationText: 'Sharing your live location for active loads.',
+          notificationChannelName: 'Driver location',
+          enableWakeLock: true,
+          setOngoing: true,
+        ),
       ),
     ).listen((position) async {
       if (ApiService.isLoggingOut || !_routeVisible) return;
