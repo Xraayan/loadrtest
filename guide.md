@@ -185,7 +185,7 @@ SEED_FIREBASE_DATA=false
 Railway:
 
 ```env
-ALLOW_CUSTOM_TOKEN_AUTH=false
+ALLOW_CUSTOM_TOKEN_AUTH=true
 SEED_FIREBASE_DATA=false
 BREVO_API_KEY=
 BREVO_FROM_EMAIL=LoadR <you@example.com>
@@ -204,15 +204,25 @@ ALLOW_CUSTOM_TOKEN_AUTH=true
 
 This helps you test when Firebase/email is not perfect yet. The backend can accept demo/dev tokens.
 
-Railway/public:
+Current Railway app:
+
+```env
+ALLOW_CUSTOM_TOKEN_AUTH=true
+```
+
+The current Flutter app stores the backend OTP token directly. It does not yet
+use Firebase Auth SDK to exchange that custom token into a Firebase ID token.
+So Railway must keep this `true`, or protected calls like driver location
+updates will fail with `401`.
+
+Future production setting:
 
 ```env
 ALLOW_CUSTOM_TOKEN_AUTH=false
 ```
 
-This is safer. A public backend should only accept real Firebase-verified tokens.
-
-If login breaks after setting it to `false`, it means the app still depends on the dev token fallback and real Firebase ID-token login needs more work.
+Only switch to `false` after Flutter is using Firebase Auth SDK and sending a
+real Firebase ID token to the backend.
 
 ## API Base URL In Flutter
 
@@ -544,7 +554,7 @@ BREVO_API_KEY=
 BREVO_FROM_EMAIL=LoadR <you@example.com>
 EMAIL_STRICT_SEND=true
 
-ALLOW_CUSTOM_TOKEN_AUTH=false
+ALLOW_CUSTOM_TOKEN_AUTH=true
 SEED_FIREBASE_DATA=false
 ```
 
