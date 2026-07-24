@@ -154,6 +154,16 @@ Used for:
 
 ### Email OTP
 
+Brevo API for Railway:
+
+```env
+BREVO_API_KEY=
+BREVO_FROM_EMAIL=LoadR <you@example.com>
+EMAIL_STRICT_SEND=true
+```
+
+SMTP fallback for local or Railway Pro:
+
 ```env
 SMTP_HOST=
 SMTP_PORT=587
@@ -179,12 +189,9 @@ Railway:
 ```env
 ALLOW_CUSTOM_TOKEN_AUTH=false
 SEED_FIREBASE_DATA=false
-SMTP_HOST=
-SMTP_PORT=587
-SMTP_USERNAME=
-SMTP_PASSWORD=
-SMTP_FROM_EMAIL=
-SMTP_USE_TLS=true
+BREVO_API_KEY=
+BREVO_FROM_EMAIL=LoadR <you@example.com>
+EMAIL_STRICT_SEND=true
 ```
 
 Railway provides its own `PORT`. Your start command should use `$PORT`, so you usually do not need to set `API_PORT` on Railway.
@@ -522,12 +529,9 @@ SUPABASE_STORAGE_BUCKET=driver-documents
 
 GEOAPIFY_API_KEY=
 
-SMTP_HOST=
-SMTP_PORT=587
-SMTP_USERNAME=
-SMTP_PASSWORD=
-SMTP_FROM_EMAIL=
-SMTP_USE_TLS=true
+BREVO_API_KEY=
+BREVO_FROM_EMAIL=LoadR <you@example.com>
+EMAIL_STRICT_SEND=true
 
 ALLOW_CUSTOM_TOKEN_AUTH=false
 SEED_FIREBASE_DATA=false

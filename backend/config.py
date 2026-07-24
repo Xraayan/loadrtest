@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     allow_custom_token_auth: bool = True
     seed_firebase_data: bool = False
     geoapify_api_key: Optional[str] = None
+    brevo_api_key: Optional[str] = None
+    brevo_from_email: Optional[str] = None
     resend_api_key: Optional[str] = None
     resend_from_email: Optional[str] = None
     email_strict_send: bool = False

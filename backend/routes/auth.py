@@ -4,6 +4,7 @@ import smtplib
 import secrets
 import time
 from email.message import EmailMessage
+from email.utils import parseaddr
 from typing import Optional, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -148,6 +149,54 @@ def _dev_auth_response(email: str, phone: Optional[str] = None) -> dict:
 
 
 def _send_otp_email(email: str, otp: str) -> bool:
+    if settings.brevo_api_key and settings.brevo_from_email:
+        try:
+            sender_name, sender_email = parseaddr(settings.brevo_from_email)
+            sender_email = sender_email or settings.brevo_from_email
+            payload = json.dumps(
+                {
+                    "sender": {
+                        "name": sender_name or "LoadR",
+                        "email": sender_email,
+                    },
+                    "to": [{"email": email}],
+                    "subject": "Your LoadR OTP",
+                    "htmlContent": f"<p>Your LoadR OTP is <strong>{otp}</strong>.</p><p>It expires in 5 minutes.</p>",
+                }
+            ).encode("utf-8")
+            request = Request(
+                "https://api.brevo.com/v3/smtp/email",
+                data=payload,
+                headers={
+                    "accept": "application/json",
+                    "api-key": settings.brevo_api_key,
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urlopen(request, timeout=10):
+                pass
+            return True
+        except HTTPError as e:
+            detail = e.read().decode("utf-8", errors="ignore") or str(e)
+            if not settings.email_strict_send:
+                print(f"Brevo rejected OTP email for {email}: {detail}")
+                print(f"OTP for {email}: {otp}")
+                return False
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Email service rejected the OTP: {detail}",
+            )
+        except URLError as e:
+            if not settings.email_strict_send:
+                print(f"Email service unavailable for {email}: {e.reason}")
+                print(f"OTP for {email}: {otp}")
+                return False
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Email service unavailable: {e.reason}",
+            )
+
     if settings.resend_api_key and settings.resend_from_email:
         try:
             payload = json.dumps(

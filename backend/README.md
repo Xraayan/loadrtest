@@ -52,7 +52,15 @@ Add `GEOAPIFY_API_KEY` to `backend/.env`.
 The mobile app calls the backend place-search API. Keep the Geoapify key on the backend; do not pass it through Flutter.
 
 ### 7. Email OTP Setup
-Use SMTP for email OTP. Set these in `backend/.env` or Railway variables:
+Use Brevo API on Railway because SMTP is blocked on non-Pro Railway plans:
+
+```env
+BREVO_API_KEY=
+BREVO_FROM_EMAIL=LoadR <you@example.com>
+EMAIL_STRICT_SEND=true
+```
+
+SMTP is still available for local development or Railway Pro:
 
 ```env
 SMTP_HOST=
