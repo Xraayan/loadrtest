@@ -29,6 +29,7 @@ pip install -r requirements.txt
 - Create a Firebase project at https://firebase.google.com/
 - Download Firebase credentials JSON from Project Settings
 - Place it in backend folder as `firebase-credentials.json`
+- On Railway, set `FIREBASE_CREDENTIALS_JSON` to the full service-account JSON instead of uploading the file
 - Copy `.env.example` to `.env`
 - Keep `ALLOW_CUSTOM_TOKEN_AUTH=true` for the current fake OTP demo flow
 
@@ -51,17 +52,16 @@ Add `GEOAPIFY_API_KEY` to `backend/.env`.
 The mobile app calls the backend place-search API. Keep the Geoapify key on the backend; do not pass it through Flutter.
 
 ### 7. Email OTP Setup
-Use Resend's free onboarding sender for local/beta email OTP. Set these in `backend/.env` or Render environment variables:
+Use SMTP for email OTP. Set these in `backend/.env` or Railway variables:
 
 ```env
-RESEND_API_KEY=re_xxxxxxxxx
-RESEND_FROM_EMAIL=Acme <onboarding@resend.dev>
-EMAIL_STRICT_SEND=false
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_FROM_EMAIL=
+SMTP_USE_TLS=true
 ```
-
-The free onboarding sender is limited. If Resend rejects a recipient and `EMAIL_STRICT_SEND=false`, the backend prints the OTP for local beta testing instead of failing sign-in.
-
-For production, verify a domain in Resend and use something like `LoadR <otp@yourdomain.com>`.
 
 ## API Documentation
 

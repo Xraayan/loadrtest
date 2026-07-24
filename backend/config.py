@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     firebase_credentials_path: str = "./firebase-credentials.json"
+    firebase_credentials_json: Optional[str] = None
     firebase_database_url: Optional[str] = None
     firebase_storage_bucket: Optional[str] = None
     supabase_url: Optional[str] = None
