@@ -310,9 +310,14 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
               ),
             ),
           ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: _BookingPanel(
+          DraggableScrollableSheet(
+            initialChildSize: 0.42,
+            minChildSize: 0.18,
+            maxChildSize: 0.72,
+            snap: true,
+            snapSizes: const [0.18, 0.42, 0.72],
+            builder: (context, scrollController) => _BookingPanel(
+              scrollController: scrollController,
               booking: booking,
               refreshing: _isRefreshing,
               canceling: _isCanceling,
@@ -537,7 +542,6 @@ class _RouteMapState extends State<_RouteMap> {
       ],
     );
   }
-
 }
 
 class _MissingMap extends StatelessWidget {
@@ -613,12 +617,14 @@ class _TopBar extends StatelessWidget {
 }
 
 class _BookingPanel extends StatelessWidget {
+  final ScrollController scrollController;
   final Map<String, dynamic> booking;
   final bool refreshing;
   final bool canceling;
   final VoidCallback onCancel;
 
   const _BookingPanel({
+    required this.scrollController,
     required this.booking,
     required this.refreshing,
     required this.canceling,
@@ -656,10 +662,6 @@ class _BookingPanel extends StatelessWidget {
       top: false,
       child: Container(
         width: double.infinity,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.6,
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -671,118 +673,116 @@ class _BookingPanel extends StatelessWidget {
             ),
           ],
         ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 48,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE3E3E3),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
+        child: ListView(
+          controller: scrollController,
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
+          children: [
+            Center(
+              child: Container(
+                width: 48,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE3E3E3),
+                  borderRadius: BorderRadius.circular(999),
                 ),
               ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      status.title,
-                      style: const TextStyle(
-                        color: Colors.black87,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                  _StatusPill(label: status.pill, active: accepted),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                status.subtitle,
-                style: const TextStyle(
-                  color: Colors.black54,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              if (refreshing) ...[
-                const SizedBox(height: 12),
-                const LinearProgressIndicator(minHeight: 3),
-              ],
-              const SizedBox(height: 16),
-              if (accepted)
-                _DriverCard(
-                  name: driverName,
-                  vehicleNumber: vehicleNumber,
-                  locationText: _driverLocationText(booking),
-                )
-              else
-                const _WaitingDriverCard(),
-              const SizedBox(height: 16),
-              _RouteSummary(
-                pickup: pickup,
-                drop: drop,
-              ),
-              const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _InfoChip(
-                          icon: Icons.local_shipping_outlined,
-                          label: vehicleType,
-                        ),
-                        if (distanceKm > 0)
-                          _InfoChip(
-                            icon: Icons.route,
-                            label: '${distanceKm.toStringAsFixed(1)} km',
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Rs ${amount.toStringAsFixed(0)}',
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    status.title,
                     style: const TextStyle(
                       color: Colors.black87,
-                      fontSize: 20,
+                      fontSize: 24,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
-                ],
+                ),
+                _StatusPill(label: status.pill, active: accepted),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              status.subtitle,
+              style: const TextStyle(
+                color: Colors.black54,
+                fontWeight: FontWeight.w700,
               ),
-              if (canCancel) ...[
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: OutlinedButton.icon(
-                    onPressed: canceling ? null : onCancel,
-                    icon: canceling
-                        ? const SkeletonBox(width: 16, height: 16, radius: 4)
-                        : const Icon(Icons.cancel_outlined),
-                    label: Text(canceling ? 'Cancelling...' : 'Cancel pickup'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFB3261E),
-                      side: const BorderSide(color: Color(0xFFFFC4C4)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+            ),
+            if (refreshing) ...[
+              const SizedBox(height: 12),
+              const LinearProgressIndicator(minHeight: 3),
+            ],
+            const SizedBox(height: 16),
+            if (accepted)
+              _DriverCard(
+                name: driverName,
+                vehicleNumber: vehicleNumber,
+                locationText: _driverLocationText(booking),
+              )
+            else
+              const _WaitingDriverCard(),
+            const SizedBox(height: 16),
+            _RouteSummary(
+              pickup: pickup,
+              drop: drop,
+            ),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _InfoChip(
+                        icon: Icons.local_shipping_outlined,
+                        label: vehicleType,
                       ),
-                    ),
+                      if (distanceKm > 0)
+                        _InfoChip(
+                          icon: Icons.route,
+                          label: '${distanceKm.toStringAsFixed(1)} km',
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Rs ${amount.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
               ],
+            ),
+            if (canCancel) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: OutlinedButton.icon(
+                  onPressed: canceling ? null : onCancel,
+                  icon: canceling
+                      ? const SkeletonBox(width: 16, height: 16, radius: 4)
+                      : const Icon(Icons.cancel_outlined),
+                  label: Text(canceling ? 'Cancelling...' : 'Cancel pickup'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFB3261E),
+                    side: const BorderSide(color: Color(0xFFFFC4C4)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
             ],
-          ),
+          ],
         ),
       ),
     );

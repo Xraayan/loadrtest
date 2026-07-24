@@ -307,9 +307,14 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
               ),
             ),
           ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: _TripPanel(
+          DraggableScrollableSheet(
+            initialChildSize: 0.42,
+            minChildSize: 0.18,
+            maxChildSize: 0.72,
+            snap: true,
+            snapSizes: const [0.18, 0.42, 0.72],
+            builder: (context, scrollController) => _TripPanel(
+              scrollController: scrollController,
               job: job,
               estimate: estimate,
               distanceToNextKm:
@@ -498,6 +503,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
 }
 
 class _TripPanel extends StatelessWidget {
+  final ScrollController scrollController;
   final Map<String, dynamic> job;
   final RideEstimate estimate;
   final double distanceToNextKm;
@@ -510,6 +516,7 @@ class _TripPanel extends StatelessWidget {
   final VoidCallback onRefresh;
 
   const _TripPanel({
+    required this.scrollController,
     required this.job,
     required this.estimate,
     required this.distanceToNextKm,
@@ -534,7 +541,6 @@ class _TripPanel extends StatelessWidget {
       top: false,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -546,9 +552,9 @@ class _TripPanel extends StatelessWidget {
             ),
           ],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: ListView(
+          controller: scrollController,
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
           children: [
             Center(
               child: Container(
