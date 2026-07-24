@@ -25,6 +25,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
   RideEstimate? _approachEstimate;
   LatLng? _currentPoint;
   StreamSubscription<Position>? _positionSubscription;
+  StreamSubscription<Map<String, dynamic>?>? _tripSubscription;
   String? _driverUid;
   bool _isLoading = true;
   bool _isUpdatingStatus = false;
@@ -98,6 +99,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
         _isLoading = false;
       });
       _startLocationUpdates(uid);
+      _startTripStream(uid);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -105,6 +107,47 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
         _isLoading = false;
       });
     }
+  }
+
+  void _startTripStream(String uid) {
+    _tripSubscription?.cancel();
+    _tripSubscription = ApiService.streamDriverActiveJob(uid).listen(
+      (job) async {
+        if (!mounted) return;
+        if (job == null) {
+          await ApiService.clearDriverActiveJob();
+          if (!mounted) return;
+          Navigator.pushReplacementNamed(context, '/dashboard');
+          return;
+        }
+
+        final current = _job;
+        final next = current == null ? job : _mergeJob(current, job);
+        await ApiService.cacheDriverActiveJob(next);
+        if (!mounted) return;
+        setState(() => _job = next);
+      },
+      onError: (_) {
+        // Manual refresh keeps the screen usable if the stream drops.
+      },
+    );
+  }
+
+  Map<String, dynamic> _mergeJob(
+    Map<String, dynamic> current,
+    Map<String, dynamic> incoming,
+  ) {
+    return {
+      ...current,
+      ...incoming,
+      'route_points': incoming['route_points'] ?? current['route_points'],
+      'pickup_coords': incoming['pickup_coords'] ?? current['pickup_coords'],
+      'dropoff_coords': incoming['dropoff_coords'] ?? current['dropoff_coords'],
+      'trip_id': incoming['trip_id'] ??
+          current['trip_id'] ??
+          incoming['assigned_trip_id'] ??
+          current['assigned_trip_id'],
+    };
   }
 
   @override
@@ -518,6 +561,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _tripSubscription?.cancel();
     _stopLocationUpdates();
     super.dispose();
   }

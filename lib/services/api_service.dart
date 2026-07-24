@@ -711,7 +711,8 @@ class ApiService {
     final client = http.Client();
     try {
       final token = await getAuthToken();
-      final uri = Uri.parse('$baseUrl/jobs/customer/$uid/active/stream').replace(
+      final uri =
+          Uri.parse('$baseUrl/jobs/customer/$uid/active/stream').replace(
         queryParameters: {
           if (jobId != null && jobId.trim().isNotEmpty) 'job_id': jobId.trim(),
         },
@@ -1060,6 +1061,54 @@ class ApiService {
       }
     } catch (e) {
       throw Exception('Error: $e');
+    }
+  }
+
+  static Stream<Map<String, dynamic>?> streamDriverActiveJob(
+      String uid) async* {
+    final client = http.Client();
+    try {
+      final token = await _requireAuthToken();
+      final request = http.Request(
+        'GET',
+        Uri.parse('$baseUrl/jobs/driver/$uid/active/stream'),
+      );
+      request.headers.addAll({
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      });
+
+      final response = await client.send(request).timeout(
+            const Duration(seconds: 10),
+          );
+      if (response.statusCode != 200) {
+        throw Exception('Active trip stream failed');
+      }
+
+      await for (final line in response.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())) {
+        if (!line.startsWith('data:')) continue;
+        final payload = line.substring(5).trim();
+        if (payload.isEmpty) continue;
+
+        final data = jsonDecode(payload);
+        final job = data is Map ? data['job'] : null;
+        if (job is Map) {
+          final activeJob = Map<String, dynamic>.from(job);
+          final trip = data['trip'];
+          if (trip is Map && trip['trip_id'] != null) {
+            activeJob['trip_id'] = trip['trip_id'];
+          }
+          await cacheDriverActiveJob(activeJob);
+          yield activeJob;
+        } else {
+          await clearDriverActiveJob();
+          yield null;
+        }
+      }
+    } finally {
+      client.close();
     }
   }
 

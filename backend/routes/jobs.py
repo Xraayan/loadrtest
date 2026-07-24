@@ -333,6 +333,43 @@ def get_active_driver_job(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
+@router.get("/driver/{uid}/active/stream")
+async def stream_active_driver_job(
+    request: Request,
+    uid: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Push driver active job changes to the app without manual refresh."""
+    require_current_user_uid(uid, current_user)
+
+    async def events():
+        last_payload = ""
+        while not await request.is_disconnected():
+            try:
+                payload = dumps(
+                    await run_in_threadpool(
+                        lambda: _active_assignment_for_driver(uid)
+                        or {"job": None, "trip": None}
+                    ),
+                    default=str,
+                    sort_keys=True,
+                )
+                if payload != last_payload:
+                    yield f"data: {payload}\n\n"
+                    last_payload = payload
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                yield 'event: error\ndata: {"message":"stream unavailable"}\n\n'
+            await asyncio.sleep(2)
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
 @router.get("/customer/{uid}/active")
 def get_active_customer_job(
     uid: str,
