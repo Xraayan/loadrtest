@@ -5,7 +5,6 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 
 from role_profiles import get_role_profile, upsert_role_profile
-from realtime_locations import sync_driver_location
 from supabase_config import get_supabase
 
 router = APIRouter()
@@ -121,7 +120,6 @@ def update_driver(uid: str, driver: DriverProfile):
                 location_data,
                 on_conflict="driver_uid",
             ).execute()
-            sync_driver_location(uid, location_data)
 
         updated_profile = (
             get_supabase()
@@ -161,9 +159,6 @@ def update_location(uid: str, location: dict):
             data,
             on_conflict="driver_uid",
         ).execute()
-        return {
-            "message": "Location updated",
-            "firebase_synced": sync_driver_location(uid, data),
-        }
+        return {"message": "Location updated", "location": data}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

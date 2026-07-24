@@ -22,7 +22,8 @@ Simple story:
 ```text
 Flutter app -> FastAPI backend -> Supabase database/storage
                          |
-                         -> Firebase Auth + Realtime Database location mirror
+                         -> Firebase Auth
+                         -> Supabase Realtime location updates
                          -> Geoapify maps/routes
                          -> Resend or SMTP email
                          -> Railway hosting
@@ -34,7 +35,8 @@ Think of it like a restaurant:
 - Flutter is the menu and table where users tap buttons.
 - FastAPI is the waiter who receives requests.
 - Supabase is the kitchen notebook where orders are stored.
-- Firebase checks who the customer/driver is, and Realtime Database keeps a latest-location mirror.
+- Firebase checks who the customer/driver is.
+- Supabase Realtime lets you inspect live driver location updates.
 - Geoapify gives map directions.
 - Resend/SMTP sends OTP emails.
 - Railway keeps the waiter/server online.
@@ -110,12 +112,6 @@ Use this on Railway:
 
 ```env
 FIREBASE_CREDENTIALS_JSON={"type":"service_account",...}
-```
-
-Other Firebase vars:
-
-```env
-FIREBASE_DATABASE_URL=
 ```
 
 Note:
@@ -428,7 +424,7 @@ Used for:
 - Driver online/offline.
 - Driver current location.
 - Supabase stores it in `driver_locations`.
-- Firebase Realtime Database mirrors it at `/driver_locations/{driver_uid}`.
+- Supabase Realtime can listen to `public.driver_locations`.
 - Nearby driver markers.
 - Auto-marking `arriving` when driver is near pickup.
 
@@ -523,7 +519,6 @@ Needed Railway vars:
 
 ```env
 FIREBASE_CREDENTIALS_JSON=
-FIREBASE_DATABASE_URL=
 
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=

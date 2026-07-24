@@ -235,10 +235,11 @@ class DashboardScreenState extends State<DashboardScreen>
     }
     if (_locationSubscription != null) return;
 
+    unawaited(_pushCurrentLocation(uid));
     _locationSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 15,
+        distanceFilter: 5,
       ),
     ).listen((position) async {
       if (ApiService.isLoggingOut || !_routeVisible) return;
@@ -252,6 +253,21 @@ class DashboardScreenState extends State<DashboardScreen>
         // The next movement update retries automatically.
       }
     }, onError: (_) {});
+  }
+
+  Future<void> _pushCurrentLocation(String uid) async {
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.bestForNavigation,
+        ),
+      );
+      await ApiService.updateLocation(uid, {
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'is_active': true,
+      });
+    } catch (_) {}
   }
 
   void _stopLocationTracking() {

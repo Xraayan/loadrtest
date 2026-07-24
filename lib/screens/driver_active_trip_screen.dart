@@ -370,10 +370,11 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
 
   void _startLocationUpdates(String uid) {
     if (!_appIsForeground || _positionSubscription != null) return;
+    unawaited(_pushCurrentLocation(uid));
     _positionSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 10,
+        distanceFilter: 3,
       ),
     ).listen((position) async {
       final point = LatLng(position.latitude, position.longitude);
@@ -400,6 +401,23 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
         // The next movement update retries automatically.
       }
     }, onError: (_) {});
+  }
+
+  Future<void> _pushCurrentLocation(String uid) async {
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.bestForNavigation,
+        ),
+      );
+      final point = LatLng(position.latitude, position.longitude);
+      if (mounted) setState(() => _currentPoint = point);
+      await ApiService.updateLocation(uid, {
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'is_active': true,
+      });
+    } catch (_) {}
   }
 
   void _stopLocationUpdates() {
