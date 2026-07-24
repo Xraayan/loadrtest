@@ -22,7 +22,7 @@ Simple story:
 ```text
 Flutter app -> FastAPI backend -> Supabase database/storage
                          |
-                         -> Firebase Auth
+                         -> Firebase Auth + Realtime Database location mirror
                          -> Geoapify maps/routes
                          -> Resend or SMTP email
                          -> Railway hosting
@@ -34,7 +34,7 @@ Think of it like a restaurant:
 - Flutter is the menu and table where users tap buttons.
 - FastAPI is the waiter who receives requests.
 - Supabase is the kitchen notebook where orders are stored.
-- Firebase checks who the customer/driver is.
+- Firebase checks who the customer/driver is, and Realtime Database keeps a latest-location mirror.
 - Geoapify gives map directions.
 - Resend/SMTP sends OTP emails.
 - Railway keeps the waiter/server online.
@@ -427,6 +427,8 @@ Used for:
 
 - Driver online/offline.
 - Driver current location.
+- Supabase stores it in `driver_locations`.
+- Firebase Realtime Database mirrors it at `/driver_locations/{driver_uid}`.
 - Nearby driver markers.
 - Auto-marking `arriving` when driver is near pickup.
 

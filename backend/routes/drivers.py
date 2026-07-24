@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 
 from role_profiles import get_role_profile, upsert_role_profile
+from realtime_locations import sync_driver_location
 from supabase_config import get_supabase
 
 router = APIRouter()
@@ -109,16 +110,18 @@ def update_driver(uid: str, driver: DriverProfile):
                 ).execute()
 
         if current_location:
+            location_data = {
+                "driver_uid": uid,
+                "latitude": current_location.get("latitude"),
+                "longitude": current_location.get("longitude"),
+                "is_active": current_location.get("is_active", True),
+                "updated_at": _now(),
+            }
             get_supabase().table("driver_locations").upsert(
-                {
-                    "driver_uid": uid,
-                    "latitude": current_location.get("latitude"),
-                    "longitude": current_location.get("longitude"),
-                    "is_active": current_location.get("is_active", True),
-                    "updated_at": _now(),
-                },
+                location_data,
                 on_conflict="driver_uid",
             ).execute()
+            sync_driver_location(uid, location_data)
 
         updated_profile = (
             get_supabase()
@@ -147,16 +150,20 @@ def update_driver(uid: str, driver: DriverProfile):
 def update_location(uid: str, location: dict):
     """Update driver's current location."""
     try:
+        data = {
+            "driver_uid": uid,
+            "latitude": location.get("latitude"),
+            "longitude": location.get("longitude"),
+            "is_active": location.get("is_active", True),
+            "updated_at": _now(),
+        }
         get_supabase().table("driver_locations").upsert(
-            {
-                "driver_uid": uid,
-                "latitude": location.get("latitude"),
-                "longitude": location.get("longitude"),
-                "is_active": location.get("is_active", True),
-                "updated_at": _now(),
-            },
+            data,
             on_conflict="driver_uid",
         ).execute()
-        return {"message": "Location updated"}
+        return {
+            "message": "Location updated",
+            "firebase_synced": sync_driver_location(uid, data),
+        }
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

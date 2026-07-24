@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from supabase_config import get_supabase
 from dependencies import CurrentUser, get_current_user, require_current_user_uid
+from realtime_locations import sync_driver_location
 from routes.quotes import LocationPoint, _haversine_km
 
 router = APIRouter()
@@ -42,11 +43,16 @@ def update_location(
             data,
             on_conflict="driver_uid",
         ).execute()
+        firebase_synced = sync_driver_location(uid, data)
         try:
             _mark_arriving_if_near_pickup(uid, location.latitude, location.longitude)
         except Exception:
             pass
-        return {"message": "Location updated", "location": data}
+        return {
+            "message": "Location updated",
+            "location": data,
+            "firebase_synced": firebase_synced,
+        }
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 

@@ -7,9 +7,11 @@ Current demo direction:
 - Firebase Auth for authentication only
 - Supabase Postgres for app data
 - Supabase Realtime for driver location, active status, and trip updates
+- Firebase Realtime Database mirror for latest driver location
 - Supabase Storage for driver documents
 
-Firebase Realtime Database is no longer used by mounted API routes.
+Driver location writes go to Supabase `driver_locations` and are also mirrored
+to Firebase Realtime Database at `/driver_locations/{driver_uid}`.
 
 ## Setup
 
@@ -30,6 +32,7 @@ pip install -r requirements.txt
 - Download Firebase credentials JSON from Project Settings
 - Place it in backend folder as `firebase-credentials.json`
 - On Railway, set `FIREBASE_CREDENTIALS_JSON` to the full service-account JSON instead of uploading the file
+- Set `FIREBASE_DATABASE_URL` to your Realtime Database URL, for example `https://your-project-id-default-rtdb.firebaseio.com`
 - Copy `.env.example` to `.env`
 - Keep `ALLOW_CUSTOM_TOKEN_AUTH=true` for the current fake OTP demo flow
 
