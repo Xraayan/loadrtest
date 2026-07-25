@@ -30,6 +30,8 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
   StreamSubscription<Map<String, dynamic>?>? _tripSubscription;
   RealtimeChannel? _driverLocationChannel;
   String? _driverUid;
+  bool _isRefreshingLiveRoute = false;
+  DateTime? _lastLiveRouteRefreshAt;
   bool _isLoading = true;
   bool _isUpdatingStatus = false;
   String? _error;
@@ -78,6 +80,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
         drop: pickedUp ? drop : pickup,
         vehicleType: _text(job['vehicle_type'], fallback: 'Tata Ace'),
         schedule: 'Now',
+        useCache: false,
       );
       final estimates = pickedUp
           ? [await approachFuture]
@@ -427,7 +430,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
     _positionSubscription = Geolocator.getPositionStream(
       locationSettings: AndroidSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 3,
+        distanceFilter: 0,
         intervalDuration: const Duration(seconds: 5),
         foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationTitle: 'LoadR active trip',
@@ -448,6 +451,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
         if (_driverLocationChannel == null && mounted) {
           setState(() => _currentPoint = point);
           _markArrivingIfNearPickup(point);
+          unawaited(_refreshLiveRoute(point));
         }
       } catch (_) {
         // The next movement update retries automatically.
@@ -464,6 +468,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
         if (point == null || !mounted) return;
         setState(() => _currentPoint = point);
         _markArrivingIfNearPickup(point);
+        unawaited(_refreshLiveRoute(point));
       },
     );
   }
@@ -475,6 +480,46 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
     final pickupPoint = LatLng(pickup.latitude, pickup.longitude);
     if (_distanceKm(point, pickupPoint) > _pickupApproachRadiusKm) return;
     setState(() => _job = {...job, 'status': 'arriving'});
+  }
+
+  Future<void> _refreshLiveRoute(LatLng point) async {
+    if (_isRefreshingLiveRoute) return;
+    final last = _lastLiveRouteRefreshAt;
+    if (last != null &&
+        DateTime.now().difference(last) < const Duration(seconds: 5)) {
+      return;
+    }
+
+    final job = _job;
+    if (job == null) return;
+    final pickedUp = _isPickedUp(job);
+    final target = _placeFromJob(job, pickup: !pickedUp);
+    final currentPlace = PlaceSuggestion(
+      displayName: 'Your current location',
+      latitude: point.latitude,
+      longitude: point.longitude,
+    );
+
+    _isRefreshingLiveRoute = true;
+    _lastLiveRouteRefreshAt = DateTime.now();
+    try {
+      final estimate = await ApiService.estimateRide(
+        pickup: currentPlace,
+        drop: target,
+        vehicleType: _text(job['vehicle_type'], fallback: 'Tata Ace'),
+        schedule: 'Now',
+        useCache: false,
+      );
+      if (!mounted || estimate.routePoints.length < 2) return;
+      setState(() {
+        _approachEstimate = estimate;
+        if (pickedUp) _estimate = estimate;
+      });
+    } catch (_) {
+      // Keep the last good live route until the next 5 second tick succeeds.
+    } finally {
+      _isRefreshingLiveRoute = false;
+    }
   }
 
   Future<void> _pushCurrentLocation(String uid) async {
@@ -493,6 +538,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
       if (_driverLocationChannel == null && mounted) {
         setState(() => _currentPoint = point);
         _markArrivingIfNearPickup(point);
+        unawaited(_refreshLiveRoute(point));
       }
     } catch (_) {}
   }

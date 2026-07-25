@@ -26,7 +26,9 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
   bool _isRefreshing = false;
   bool _isCanceling = false;
   bool _isRefreshingRoute = false;
+  bool _isRefreshingLiveDriverRoute = false;
   DateTime? _lastRouteRefreshAt;
+  DateTime? _lastLiveDriverRouteRefreshAt;
   StreamSubscription<Map<String, dynamic>?>? _bookingSubscription;
   RealtimeChannel? _driverLocationChannel;
   String? _driverLocationUid;
@@ -207,6 +209,66 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
       },
     };
     setState(() => _booking = next);
+    final point = _pointFromLocation(location);
+    if (point != null) unawaited(_refreshLiveDriverRoute(next, point));
+  }
+
+  Future<void> _refreshLiveDriverRoute(
+    Map<String, dynamic> booking,
+    LatLng driverPoint,
+  ) async {
+    if (_isRefreshingLiveDriverRoute) return;
+    final last = _lastLiveDriverRouteRefreshAt;
+    if (last != null &&
+        DateTime.now().difference(last) < const Duration(seconds: 5)) {
+      return;
+    }
+
+    final pickedUp = _isOnTrip(booking);
+    final target = _placeFromBooking(booking, pickedUp ? 'dropoff' : 'pickup');
+    if (target == null) return;
+
+    _isRefreshingLiveDriverRoute = true;
+    _lastLiveDriverRouteRefreshAt = DateTime.now();
+    try {
+      final estimate = await ApiService.estimateRide(
+        pickup: PlaceSuggestion(
+          displayName: 'Driver current location',
+          latitude: driverPoint.latitude,
+          longitude: driverPoint.longitude,
+        ),
+        drop: target,
+        vehicleType: _text(booking['vehicle_type']).isEmpty
+            ? 'Tata Ace'
+            : _text(booking['vehicle_type']),
+        schedule: 'Now',
+        useCache: false,
+      );
+      if (!mounted || estimate.routePoints.length < 2) return;
+
+      final current = _booking;
+      if (current == null) return;
+      final routePoints = estimate.routePoints
+          .map(
+            (point) => {
+              'latitude': point.latitude,
+              'longitude': point.longitude,
+            },
+          )
+          .toList();
+      final next = {...current};
+      if (pickedUp) {
+        next['distance_km'] = estimate.distanceKm;
+        next['route_points'] = routePoints;
+      } else {
+        next['driver_route_points'] = routePoints;
+      }
+      setState(() => _booking = next);
+    } catch (_) {
+      // Keep the last good live route until the next driver location tick.
+    } finally {
+      _isRefreshingLiveDriverRoute = false;
+    }
   }
 
   Map<String, dynamic> _mergeJobIntoBooking(
@@ -329,6 +391,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
               pickup: pickup,
               drop: drop,
               routePoints: _routePointsFromBooking(booking),
+              driverRoutePoints: _driverRoutePointsFromBooking(booking),
               driverPoint: _driverPointFromBooking(booking),
               nearbyDrivers: _nearbyDriverPoints(booking),
               pickedUp: _isOnTrip(booking),
@@ -438,6 +501,7 @@ class _RouteMap extends StatefulWidget {
   final PlaceSuggestion pickup;
   final PlaceSuggestion drop;
   final List<LatLng> routePoints;
+  final List<LatLng> driverRoutePoints;
   final LatLng? driverPoint;
   final List<LatLng> nearbyDrivers;
   final bool pickedUp;
@@ -449,6 +513,7 @@ class _RouteMap extends StatefulWidget {
     required this.pickup,
     required this.drop,
     required this.routePoints,
+    required this.driverRoutePoints,
     required this.driverPoint,
     required this.nearbyDrivers,
     required this.pickedUp,
@@ -468,6 +533,8 @@ class _RouteMapState extends State<_RouteMap> {
     final routePoints = widget.pickedUp && widget.driverPoint != null
         ? _trimRouteFrom(widget.driverPoint!, widget.routePoints)
         : widget.routePoints;
+    final driverRoutePoints =
+        widget.pickedUp ? const <LatLng>[] : widget.driverRoutePoints;
     final pickupPoint = widget.routePoints.isEmpty
         ? LatLng(widget.pickup.latitude, widget.pickup.longitude)
         : widget.routePoints.first;
@@ -475,7 +542,12 @@ class _RouteMapState extends State<_RouteMap> {
         ? LatLng(widget.drop.latitude, widget.drop.longitude)
         : routePoints.last;
     final mapStart = widget.driverPoint ?? pickupPoint;
-    final cameraPoints = [mapStart, ...routePoints, dropPoint];
+    final cameraPoints = [
+      mapStart,
+      ...driverRoutePoints,
+      ...routePoints,
+      dropPoint,
+    ];
     final markerSize = routeMarkerSizeForZoom(_zoom);
     final driverSize = nearbyDriverMarkerSizeForZoom(_zoom);
     final nearbyDrivers = _zoom < 11
@@ -520,7 +592,15 @@ class _RouteMapState extends State<_RouteMap> {
             ),
             PolylineLayer(
               polylines: [
-                if (widget.driverPoint != null && !widget.pickedUp)
+                if (driverRoutePoints.length >= 2)
+                  Polyline(
+                    points: driverRoutePoints,
+                    color: const Color(0xFF333333),
+                    strokeWidth: _zoom < 11 ? 3 : 5,
+                    borderColor: Colors.white,
+                    borderStrokeWidth: _zoom < 11 ? 1 : 2,
+                  )
+                else if (widget.driverPoint != null && !widget.pickedUp)
                   Polyline(
                     points: [widget.driverPoint!, pickupPoint],
                     color: const Color(0xFF333333),
@@ -1315,6 +1395,20 @@ List<LatLng> _routePointsFromBooking(Map<String, dynamic> booking) {
   return [];
 }
 
+List<LatLng> _driverRoutePointsFromBooking(Map<String, dynamic> booking) {
+  final points = booking['driver_route_points'];
+  if (points is! List) return [];
+  final routePoints = points.whereType<Map>().map((point) {
+    return LatLng(
+      _asDouble(point['latitude']),
+      _asDouble(point['longitude']),
+    );
+  }).where((point) {
+    return point.latitude != 0 && point.longitude != 0;
+  }).toList();
+  return routePoints.length > 2 ? routePoints : [];
+}
+
 int _routePointCount(Object? value) {
   if (value is! List) return 0;
   return value.whereType<Map>().where((point) {
@@ -1328,6 +1422,13 @@ LatLng? _driverPointFromBooking(Map<String, dynamic> booking) {
   final driver = booking['driver'];
   final location = driver is Map ? driver['current_location'] : null;
   if (location is! Map) return null;
+  final latitude = _asDouble(location['latitude']);
+  final longitude = _asDouble(location['longitude']);
+  if (latitude == 0 || longitude == 0) return null;
+  return LatLng(latitude, longitude);
+}
+
+LatLng? _pointFromLocation(Map<String, dynamic> location) {
   final latitude = _asDouble(location['latitude']);
   final longitude = _asDouble(location['longitude']);
   if (latitude == 0 || longitude == 0) return null;

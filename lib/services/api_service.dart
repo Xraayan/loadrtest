@@ -876,15 +876,20 @@ class ApiService {
     required PlaceSuggestion drop,
     required String vehicleType,
     required String schedule,
+    bool useCache = true,
   }) async {
     final cacheKey = 'estimate_v5_${pickup.latitude.toStringAsFixed(5)}_'
         '${pickup.longitude.toStringAsFixed(5)}_'
         '${drop.latitude.toStringAsFixed(5)}_'
         '${drop.longitude.toStringAsFixed(5)}_${vehicleType}_$schedule';
-    final cached = await _readJsonCache(cacheKey, const Duration(minutes: 15));
-    if (cached is Map) {
-      final estimate = RideEstimate.fromJson(Map<String, dynamic>.from(cached));
-      if (estimate.routePoints.length > 2) return estimate;
+    if (useCache) {
+      final cached =
+          await _readJsonCache(cacheKey, const Duration(minutes: 15));
+      if (cached is Map) {
+        final estimate =
+            RideEstimate.fromJson(Map<String, dynamic>.from(cached));
+        if (estimate.routePoints.length > 2) return estimate;
+      }
     }
 
     try {
@@ -909,7 +914,7 @@ class ApiService {
         final data = jsonDecode(response.body);
         if (data is Map) {
           final estimateJson = Map<String, dynamic>.from(data);
-          await _writeJsonCache(cacheKey, estimateJson);
+          if (useCache) await _writeJsonCache(cacheKey, estimateJson);
           return RideEstimate.fromJson(estimateJson);
         }
         throw Exception('Invalid estimate response');
@@ -920,11 +925,13 @@ class ApiService {
         ));
       }
     } catch (e) {
-      final stale = await _readJsonCache(cacheKey, const Duration(days: 1));
-      if (stale is Map) {
-        final estimate =
-            RideEstimate.fromJson(Map<String, dynamic>.from(stale));
-        if (estimate.routePoints.length > 2) return estimate;
+      if (useCache) {
+        final stale = await _readJsonCache(cacheKey, const Duration(days: 1));
+        if (stale is Map) {
+          final estimate =
+              RideEstimate.fromJson(Map<String, dynamic>.from(stale));
+          if (estimate.routePoints.length > 2) return estimate;
+        }
       }
       throw Exception('Error: $e');
     }
