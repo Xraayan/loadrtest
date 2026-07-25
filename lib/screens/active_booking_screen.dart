@@ -331,6 +331,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
               routePoints: _routePointsFromBooking(booking),
               driverPoint: _driverPointFromBooking(booking),
               nearbyDrivers: _nearbyDriverPoints(booking),
+              pickedUp: _isOnTrip(booking),
               onZoomIn: () => _zoomBy(1),
               onZoomOut: () => _zoomBy(-1),
             )
@@ -439,6 +440,7 @@ class _RouteMap extends StatefulWidget {
   final List<LatLng> routePoints;
   final LatLng? driverPoint;
   final List<LatLng> nearbyDrivers;
+  final bool pickedUp;
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
 
@@ -449,6 +451,7 @@ class _RouteMap extends StatefulWidget {
     required this.routePoints,
     required this.driverPoint,
     required this.nearbyDrivers,
+    required this.pickedUp,
     required this.onZoomIn,
     required this.onZoomOut,
   });
@@ -462,14 +465,17 @@ class _RouteMapState extends State<_RouteMap> {
 
   @override
   Widget build(BuildContext context) {
+    final routePoints = widget.pickedUp && widget.driverPoint != null
+        ? _trimRouteFrom(widget.driverPoint!, widget.routePoints)
+        : widget.routePoints;
     final pickupPoint = widget.routePoints.isEmpty
         ? LatLng(widget.pickup.latitude, widget.pickup.longitude)
         : widget.routePoints.first;
-    final dropPoint = widget.routePoints.isEmpty
+    final dropPoint = routePoints.isEmpty
         ? LatLng(widget.drop.latitude, widget.drop.longitude)
-        : widget.routePoints.last;
+        : routePoints.last;
     final mapStart = widget.driverPoint ?? pickupPoint;
-    final cameraPoints = [mapStart, ...widget.routePoints, dropPoint];
+    final cameraPoints = [mapStart, ...routePoints, dropPoint];
     final markerSize = routeMarkerSizeForZoom(_zoom);
     final driverSize = nearbyDriverMarkerSizeForZoom(_zoom);
     final nearbyDrivers = _zoom < 11
@@ -514,9 +520,17 @@ class _RouteMapState extends State<_RouteMap> {
             ),
             PolylineLayer(
               polylines: [
-                if (widget.routePoints.length >= 2)
+                if (widget.driverPoint != null && !widget.pickedUp)
                   Polyline(
-                    points: widget.routePoints,
+                    points: [widget.driverPoint!, pickupPoint],
+                    color: const Color(0xFF333333),
+                    strokeWidth: _zoom < 11 ? 3 : 5,
+                    borderColor: Colors.white,
+                    borderStrokeWidth: _zoom < 11 ? 1 : 2,
+                  ),
+                if (routePoints.length >= 2)
+                  Polyline(
+                    points: routePoints,
                     color: kPrimaryOrange,
                     strokeWidth: _zoom < 11 ? 4 : 6,
                     borderColor: Colors.white,
@@ -1349,6 +1363,24 @@ String _driverLocationText(Map<String, dynamic> booking) {
   );
   if (km <= 0.5) return 'Driver is reaching pickup';
   return '${km.toStringAsFixed(1)} km from pickup - live on map';
+}
+
+List<LatLng> _trimRouteFrom(LatLng current, List<LatLng> route) {
+  if (route.length < 2) return route;
+
+  const distance = Distance();
+  var nearestIndex = 0;
+  var nearestDistance = double.infinity;
+  for (var i = 0; i < route.length; i++) {
+    final km = distance.as(LengthUnit.Kilometer, current, route[i]);
+    if (km < nearestDistance) {
+      nearestDistance = km;
+      nearestIndex = i;
+    }
+  }
+
+  if (nearestIndex >= route.length - 1) return [current, route.last];
+  return [current, ...route.skip(nearestIndex + 1)];
 }
 
 double _asDouble(Object? value) {

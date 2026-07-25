@@ -8,7 +8,9 @@ import 'package:loadr/constants.dart';
 import 'package:loadr/models/place_suggestion.dart';
 import 'package:loadr/models/ride_quote.dart';
 import 'package:loadr/services/api_service.dart';
+import 'package:loadr/services/supabase_realtime_service.dart';
 import 'package:loadr/widgets/skeleton.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DriverActiveTripScreen extends StatefulWidget {
   const DriverActiveTripScreen({super.key});
@@ -26,6 +28,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
   LatLng? _currentPoint;
   StreamSubscription<Position>? _positionSubscription;
   StreamSubscription<Map<String, dynamic>?>? _tripSubscription;
+  RealtimeChannel? _driverLocationChannel;
   String? _driverUid;
   bool _isLoading = true;
   bool _isUpdatingStatus = false;
@@ -98,6 +101,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
         _currentPoint = currentPoint;
         _isLoading = false;
       });
+      _startServerLocationStream(uid);
       _startLocationUpdates(uid);
       _startTripStream(uid);
     } catch (e) {
@@ -200,13 +204,19 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
     final loadRoutePoints = !pickedUp && savedLoadRoutePoints.isNotEmpty
         ? savedLoadRoutePoints
         : estimate.routePoints;
-    final approachRoutePoints = approachEstimate.routePoints;
+    final approachRoutePoints =
+        _trimRouteFrom(currentPoint, approachEstimate.routePoints);
     final pickupPoint = approachRoutePoints.isEmpty
         ? (loadRoutePoints.isEmpty ? rawPickupPoint : loadRoutePoints.first)
         : approachRoutePoints.last;
-    final dropPoint =
-        loadRoutePoints.isEmpty ? rawDropPoint : loadRoutePoints.last;
-    final activeRoutePoints = pickedUp ? loadRoutePoints : approachRoutePoints;
+    final activeLoadRoutePoints = pickedUp
+        ? _trimRouteFrom(currentPoint, loadRoutePoints)
+        : loadRoutePoints;
+    final dropPoint = activeLoadRoutePoints.isEmpty
+        ? rawDropPoint
+        : activeLoadRoutePoints.last;
+    final activeRoutePoints =
+        pickedUp ? activeLoadRoutePoints : approachRoutePoints;
     final routedCameraPoints = pickedUp
         ? activeRoutePoints
         : [...approachRoutePoints, ...loadRoutePoints];
@@ -215,9 +225,8 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
         : routedCameraPoints;
     final distanceToPickupKm = _distanceKm(currentPoint, pickupPoint);
     final distanceToDropKm = _distanceKm(currentPoint, dropPoint);
-    final canConfirmPickup = !pickedUp &&
-        (distanceToPickupKm <= _pickupConfirmRadiusKm ||
-            _text(job['status']).toLowerCase() == 'arriving');
+    final canConfirmPickup =
+        !pickedUp && distanceToPickupKm <= _pickupConfirmRadiusKm;
     final canConfirmDropoff =
         pickedUp && distanceToDropKm <= _dropoffConfirmRadiusKm;
     final markerSize = routeMarkerSizeForZoom(_zoom);
@@ -271,11 +280,13 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
                         borderColor: Colors.white,
                         borderStrokeWidth: 3,
                       ),
-                    if ((pickedUp ? activeRoutePoints : loadRoutePoints)
+                    if ((pickedUp ? activeRoutePoints : activeLoadRoutePoints)
                             .length >=
                         2)
                       Polyline(
-                        points: pickedUp ? activeRoutePoints : loadRoutePoints,
+                        points: pickedUp
+                            ? activeRoutePoints
+                            : activeLoadRoutePoints,
                         color: kPrimaryOrange,
                         strokeWidth: 6,
                         borderColor: Colors.white,
@@ -428,29 +439,42 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
       ),
     ).listen((position) async {
       final point = LatLng(position.latitude, position.longitude);
-      if (mounted) {
-        final job = _job;
-        setState(() {
-          _currentPoint = point;
-          if (job != null && !_isPickedUp(job)) {
-            final pickup = _placeFromJob(job, pickup: true);
-            final pickupPoint = LatLng(pickup.latitude, pickup.longitude);
-            if (_distanceKm(point, pickupPoint) <= _pickupConfirmRadiusKm) {
-              _job = {...job, 'status': 'arriving'};
-            }
-          }
-        });
-      }
       try {
         await ApiService.updateLocation(uid, {
           'latitude': position.latitude,
           'longitude': position.longitude,
           'is_active': true,
         });
+        if (_driverLocationChannel == null && mounted) {
+          setState(() => _currentPoint = point);
+          _markArrivingIfNearPickup(point);
+        }
       } catch (_) {
         // The next movement update retries automatically.
       }
     }, onError: (_) {});
+  }
+
+  void _startServerLocationStream(String uid) {
+    if (_driverLocationChannel != null) return;
+    _driverLocationChannel = SupabaseRealtimeService.subscribeToDriverLocation(
+      driverUid: uid,
+      onLocation: (location) {
+        final point = _pointFromLocation(location);
+        if (point == null || !mounted) return;
+        setState(() => _currentPoint = point);
+        _markArrivingIfNearPickup(point);
+      },
+    );
+  }
+
+  void _markArrivingIfNearPickup(LatLng point) {
+    final job = _job;
+    if (job == null || _isPickedUp(job)) return;
+    final pickup = _placeFromJob(job, pickup: true);
+    final pickupPoint = LatLng(pickup.latitude, pickup.longitude);
+    if (_distanceKm(point, pickupPoint) > _pickupApproachRadiusKm) return;
+    setState(() => _job = {...job, 'status': 'arriving'});
   }
 
   Future<void> _pushCurrentLocation(String uid) async {
@@ -461,12 +485,15 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
         ),
       );
       final point = LatLng(position.latitude, position.longitude);
-      if (mounted) setState(() => _currentPoint = point);
       await ApiService.updateLocation(uid, {
         'latitude': position.latitude,
         'longitude': position.longitude,
         'is_active': true,
       });
+      if (_driverLocationChannel == null && mounted) {
+        setState(() => _currentPoint = point);
+        _markArrivingIfNearPickup(point);
+      }
     } catch (_) {}
   }
 
@@ -562,6 +589,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _tripSubscription?.cancel();
+    unawaited(SupabaseRealtimeService.removeChannel(_driverLocationChannel));
     _stopLocationUpdates();
     super.dispose();
   }
@@ -1023,7 +1051,8 @@ PlaceSuggestion _placeFromJob(Map<String, dynamic> job,
   );
 }
 
-const _pickupConfirmRadiusKm = 0.5;
+const _pickupConfirmRadiusKm = 0.01;
+const _pickupApproachRadiusKm = 0.5;
 const _dropoffConfirmRadiusKm = 0.5;
 
 bool _isPickedUp(Map<String, dynamic> job) {
@@ -1038,6 +1067,30 @@ bool _isPickedUp(Map<String, dynamic> job) {
 double _distanceKm(LatLng from, LatLng to) {
   const distance = Distance();
   return distance.as(LengthUnit.Kilometer, from, to);
+}
+
+List<LatLng> _trimRouteFrom(LatLng current, List<LatLng> route) {
+  if (route.length < 2) return route;
+
+  var nearestIndex = 0;
+  var nearestDistance = double.infinity;
+  for (var i = 0; i < route.length; i++) {
+    final distance = _distanceKm(current, route[i]);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = i;
+    }
+  }
+
+  if (nearestIndex >= route.length - 1) return [current, route.last];
+  return [current, ...route.skip(nearestIndex + 1)];
+}
+
+LatLng? _pointFromLocation(Map<String, dynamic> location) {
+  final latitude = _asDouble(location['latitude']);
+  final longitude = _asDouble(location['longitude']);
+  if (latitude == 0 || longitude == 0) return null;
+  return LatLng(latitude, longitude);
 }
 
 double _asDouble(Object? value) {
