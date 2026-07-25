@@ -727,8 +727,10 @@ class _TripPanel extends StatelessWidget {
                       ),
                       _InfoChip(
                         icon: Icons.near_me_outlined,
-                        label:
-                            '${distanceToNextKm.toStringAsFixed(1)} km to ${pickedUp ? 'drop' : 'pickup'}',
+                        label: _distanceLabel(
+                          distanceToNextKm,
+                          pickedUp ? 'drop' : 'pickup',
+                        ),
                       ),
                       _InfoChip(
                         icon: Icons.route,
@@ -1087,7 +1089,7 @@ PlaceSuggestion _placeFromJob(Map<String, dynamic> job,
   );
 }
 
-const _pickupConfirmRadiusKm = 0.01;
+const _pickupConfirmRadiusKm = 0.05;
 const _pickupApproachRadiusKm = 0.5;
 const _dropoffConfirmRadiusKm = 0.5;
 
@@ -1103,6 +1105,13 @@ bool _isPickedUp(Map<String, dynamic> job) {
 double _distanceKm(LatLng from, LatLng to) {
   const distance = Distance();
   return distance.as(LengthUnit.Kilometer, from, to);
+}
+
+String _distanceLabel(double distanceKm, String target) {
+  if (distanceKm < 1) {
+    return '${(distanceKm * 1000).round()} m to $target';
+  }
+  return '${distanceKm.toStringAsFixed(1)} km to $target';
 }
 
 LatLng? _pointFromLocation(Map<String, dynamic> location) {

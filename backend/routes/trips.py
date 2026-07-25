@@ -9,7 +9,7 @@ from routes.quotes import LocationPoint, _haversine_km
 from supabase_config import get_supabase
 
 router = APIRouter()
-PICKUP_CONFIRM_RADIUS_KM = 0.01
+PICKUP_CONFIRM_RADIUS_KM = 0.05
 
 
 class Trip(BaseModel):
@@ -213,5 +213,5 @@ def _require_driver_near_pickup(trip: dict) -> None:
     if distance_km > PICKUP_CONFIRM_RADIUS_KM:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Confirm pickup is available within 10 m of pickup",
+            detail="Confirm pickup is available within 50 m of pickup",
         )
