@@ -67,46 +67,25 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
       }
 
       final pickup = _placeFromJob(job, pickup: true);
-      final drop = _placeFromJob(job, pickup: false);
-      final pickedUp = _isPickedUp(job);
       final currentPoint = await _currentDriverPoint(uid, pickup);
-      final currentPlace = PlaceSuggestion(
-        displayName: 'Your current location',
-        latitude: currentPoint.latitude,
-        longitude: currentPoint.longitude,
-      );
-      final approachFuture = ApiService.estimateRide(
-        pickup: currentPlace,
-        drop: pickedUp ? drop : pickup,
-        vehicleType: _text(job['vehicle_type'], fallback: 'Tata Ace'),
-        schedule: 'Now',
-        useCache: false,
-      );
-      final estimates = pickedUp
-          ? [await approachFuture]
-          : await Future.wait([
-              approachFuture,
-              ApiService.estimateRide(
-                pickup: pickup,
-                drop: drop,
-                vehicleType: _text(job['vehicle_type'], fallback: 'Tata Ace'),
-                schedule: 'Now',
-              ),
-            ]);
-      final approachEstimate = estimates.first;
-      final estimate = pickedUp ? approachEstimate : estimates.last;
+      final loadRoutePoints = _routePointsFromJob(job);
+      final loadDistanceKm = _asDouble(job['distance_km']);
 
       if (!mounted) return;
       setState(() {
         _job = job;
-        _estimate = estimate;
-        _approachEstimate = approachEstimate;
+        _estimate = _estimateFromPoints(loadDistanceKm, loadRoutePoints);
+        _approachEstimate = _emptyEstimate();
         _currentPoint = currentPoint;
         _isLoading = false;
       });
       _startServerLocationStream(uid);
       _startLocationUpdates(uid);
       _startTripStream(uid);
+      unawaited(_refreshLiveRoute(currentPoint));
+      if (!_isPickedUp(job) && loadRoutePoints.isEmpty) {
+        unawaited(_refreshLoadRoute(job));
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -164,14 +143,8 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
     }
 
     final job = _job;
-    final estimate = _estimate;
-    final approachEstimate = _approachEstimate;
     final currentPoint = _currentPoint;
-    if (job == null ||
-        estimate == null ||
-        approachEstimate == null ||
-        currentPoint == null ||
-        _error != null) {
+    if (job == null || currentPoint == null || _error != null) {
       return Scaffold(
         backgroundColor: const Color(0xFFF7F7F7),
         appBar: AppBar(
@@ -204,30 +177,41 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
     final rawDropPoint = LatLng(drop.latitude, drop.longitude);
     final pickedUp = _isPickedUp(job);
     final savedLoadRoutePoints = _routePointsFromJob(job);
+    final fallbackLoadDistanceKm = _asDouble(job['distance_km']);
+    final estimate =
+        _estimate ?? _estimateFromPoints(fallbackLoadDistanceKm, savedLoadRoutePoints);
+    final approachEstimate = _approachEstimate ?? _emptyEstimate();
     final loadRoutePoints = !pickedUp && savedLoadRoutePoints.isNotEmpty
         ? savedLoadRoutePoints
         : estimate.routePoints;
-    final approachRoutePoints =
-        _trimRouteFrom(currentPoint, approachEstimate.routePoints);
-    final pickupPoint = approachRoutePoints.isEmpty
-        ? (loadRoutePoints.isEmpty ? rawPickupPoint : loadRoutePoints.first)
-        : approachRoutePoints.last;
+    final liveRoutePoints = approachEstimate.routePoints;
+    final pickupPoint = liveRoutePoints.isEmpty
+        ? rawPickupPoint
+        : liveRoutePoints.last;
     final activeLoadRoutePoints = pickedUp
-        ? _trimRouteFrom(currentPoint, loadRoutePoints)
+        ? liveRoutePoints
         : loadRoutePoints;
     final dropPoint = activeLoadRoutePoints.isEmpty
         ? rawDropPoint
         : activeLoadRoutePoints.last;
-    final activeRoutePoints =
-        pickedUp ? activeLoadRoutePoints : approachRoutePoints;
     final routedCameraPoints = pickedUp
-        ? activeRoutePoints
-        : [...approachRoutePoints, ...loadRoutePoints];
+        ? activeLoadRoutePoints
+        : [...liveRoutePoints, ...loadRoutePoints];
     final cameraPoints = routedCameraPoints.isEmpty
         ? [currentPoint, pickupPoint, dropPoint]
         : routedCameraPoints;
-    final distanceToPickupKm = _distanceKm(currentPoint, pickupPoint);
-    final distanceToDropKm = _distanceKm(currentPoint, dropPoint);
+    final distanceToPickupKm = _distanceKm(currentPoint, rawPickupPoint);
+    final distanceToDropKm = _distanceKm(currentPoint, rawDropPoint);
+    final distanceToNextKm = approachEstimate.distanceKm > 0
+        ? approachEstimate.distanceKm
+        : pickedUp
+            ? distanceToDropKm
+            : distanceToPickupKm;
+    final loadTripDistanceKm = pickedUp
+        ? estimate.distanceKm
+        : estimate.distanceKm > 0
+            ? estimate.distanceKm
+            : fallbackLoadDistanceKm;
     final canConfirmPickup =
         !pickedUp && distanceToPickupKm <= _pickupConfirmRadiusKm;
     final canConfirmDropoff =
@@ -275,21 +259,17 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
                 ),
                 PolylineLayer(
                   polylines: [
-                    if (!pickedUp && approachRoutePoints.length >= 2)
+                    if (!pickedUp && liveRoutePoints.length >= 2)
                       Polyline(
-                        points: approachRoutePoints,
+                        points: liveRoutePoints,
                         color: const Color(0xFF333333),
                         strokeWidth: 5,
                         borderColor: Colors.white,
                         borderStrokeWidth: 3,
                       ),
-                    if ((pickedUp ? activeRoutePoints : activeLoadRoutePoints)
-                            .length >=
-                        2)
+                    if (activeLoadRoutePoints.length >= 2)
                       Polyline(
-                        points: pickedUp
-                            ? activeRoutePoints
-                            : activeLoadRoutePoints,
+                        points: activeLoadRoutePoints,
                         color: kPrimaryOrange,
                         strokeWidth: 6,
                         borderColor: Colors.white,
@@ -373,8 +353,8 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
               scrollController: scrollController,
               job: job,
               estimate: estimate,
-              distanceToNextKm:
-                  pickedUp ? estimate.distanceKm : approachEstimate.distanceKm,
+              distanceToNextKm: distanceToNextKm,
+              loadTripDistanceKm: loadTripDistanceKm,
               pickedUp: pickedUp,
               canConfirmPickup: canConfirmPickup,
               canConfirmDropoff: canConfirmDropoff,
@@ -509,6 +489,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
         vehicleType: _text(job['vehicle_type'], fallback: 'Tata Ace'),
         schedule: 'Now',
         useCache: false,
+        timeout: const Duration(seconds: 8),
       );
       if (!mounted || estimate.routePoints.length < 2) return;
       setState(() {
@@ -519,6 +500,23 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
       // Keep the last good live route until the next 5 second tick succeeds.
     } finally {
       _isRefreshingLiveRoute = false;
+    }
+  }
+
+  Future<void> _refreshLoadRoute(Map<String, dynamic> job) async {
+    try {
+      final pickup = _placeFromJob(job, pickup: true);
+      final drop = _placeFromJob(job, pickup: false);
+      final estimate = await ApiService.estimateRide(
+        pickup: pickup,
+        drop: drop,
+        vehicleType: _text(job['vehicle_type'], fallback: 'Tata Ace'),
+        schedule: 'Now',
+      );
+      if (!mounted || estimate.routePoints.length < 2) return;
+      setState(() => _estimate = estimate);
+    } catch (_) {
+      // The live route still keeps the map usable if the saved load route fails.
     }
   }
 
@@ -646,6 +644,7 @@ class _TripPanel extends StatelessWidget {
   final Map<String, dynamic> job;
   final RideEstimate estimate;
   final double distanceToNextKm;
+  final double loadTripDistanceKm;
   final bool pickedUp;
   final bool canConfirmPickup;
   final bool canConfirmDropoff;
@@ -659,6 +658,7 @@ class _TripPanel extends StatelessWidget {
     required this.job,
     required this.estimate,
     required this.distanceToNextKm,
+    required this.loadTripDistanceKm,
     required this.pickedUp,
     required this.canConfirmPickup,
     required this.canConfirmDropoff,
@@ -743,13 +743,13 @@ class _TripPanel extends StatelessWidget {
                       _InfoChip(
                         icon: Icons.route,
                         label:
-                            '${estimate.distanceKm.toStringAsFixed(1)} km load trip',
+                            '${loadTripDistanceKm.toStringAsFixed(1)} km load trip',
                       ),
                       if (!pickedUp)
                         _InfoChip(
                           icon: Icons.straighten,
                           label:
-                              '${(distanceToNextKm + estimate.distanceKm).toStringAsFixed(1)} km total',
+                              '${(distanceToNextKm + loadTripDistanceKm).toStringAsFixed(1)} km total',
                         ),
                     ],
                   ),
@@ -1115,28 +1115,34 @@ double _distanceKm(LatLng from, LatLng to) {
   return distance.as(LengthUnit.Kilometer, from, to);
 }
 
-List<LatLng> _trimRouteFrom(LatLng current, List<LatLng> route) {
-  if (route.length < 2) return route;
-
-  var nearestIndex = 0;
-  var nearestDistance = double.infinity;
-  for (var i = 0; i < route.length; i++) {
-    final distance = _distanceKm(current, route[i]);
-    if (distance < nearestDistance) {
-      nearestDistance = distance;
-      nearestIndex = i;
-    }
-  }
-
-  if (nearestIndex >= route.length - 1) return [current, route.last];
-  return [current, ...route.skip(nearestIndex + 1)];
-}
-
 LatLng? _pointFromLocation(Map<String, dynamic> location) {
   final latitude = _asDouble(location['latitude']);
   final longitude = _asDouble(location['longitude']);
   if (latitude == 0 || longitude == 0) return null;
   return LatLng(latitude, longitude);
+}
+
+RideEstimate _emptyEstimate() => _estimateFromPoints(0, const []);
+
+RideEstimate _estimateFromPoints(double distanceKm, List<LatLng> routePoints) {
+  const quote = VehicleQuote(
+    vehicleType: 'Tata Ace',
+    distanceKm: 0,
+    baseFare: 0,
+    perKmRate: 0,
+    minimumFare: 0,
+    amount: 0,
+  );
+  return RideEstimate(
+    distanceKm: distanceKm,
+    selectedQuote: quote,
+    vehicleQuotes: const [quote],
+    routePoints: routePoints,
+    city: '',
+    district: '',
+    state: '',
+    suggestedVehicleType: '',
+  );
 }
 
 double _asDouble(Object? value) {

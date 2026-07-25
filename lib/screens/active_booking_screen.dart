@@ -243,6 +243,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
             : _text(booking['vehicle_type']),
         schedule: 'Now',
         useCache: false,
+        timeout: const Duration(seconds: 8),
       );
       if (!mounted || estimate.routePoints.length < 2) return;
 
@@ -595,14 +596,6 @@ class _RouteMapState extends State<_RouteMap> {
                 if (driverRoutePoints.length >= 2)
                   Polyline(
                     points: driverRoutePoints,
-                    color: const Color(0xFF333333),
-                    strokeWidth: _zoom < 11 ? 3 : 5,
-                    borderColor: Colors.white,
-                    borderStrokeWidth: _zoom < 11 ? 1 : 2,
-                  )
-                else if (widget.driverPoint != null && !widget.pickedUp)
-                  Polyline(
-                    points: [widget.driverPoint!, pickupPoint],
                     color: const Color(0xFF333333),
                     strokeWidth: _zoom < 11 ? 3 : 5,
                     borderColor: Colors.white,

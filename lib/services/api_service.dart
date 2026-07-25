@@ -877,6 +877,7 @@ class ApiService {
     required String vehicleType,
     required String schedule,
     bool useCache = true,
+    Duration timeout = const Duration(seconds: 25),
   }) async {
     final cacheKey = 'estimate_v5_${pickup.latitude.toStringAsFixed(5)}_'
         '${pickup.longitude.toStringAsFixed(5)}_'
@@ -908,7 +909,7 @@ class ApiService {
               'schedule': schedule,
             }),
           )
-          .timeout(const Duration(seconds: 25));
+          .timeout(timeout);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
