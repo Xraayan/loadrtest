@@ -22,13 +22,20 @@ ACTIVE_TRIP_STATUSES = {
     "assigned",
     "arriving",
     "in_progress",
+    "awaiting_payment",
     "started",
     "on_the_way",
     "pickup",
     "loaded",
 }
 
-ACTIVE_JOB_STATUSES = {"assigned", "accepted", "arriving", "in_progress"}
+ACTIVE_JOB_STATUSES = {
+    "assigned",
+    "accepted",
+    "arriving",
+    "in_progress",
+    "awaiting_payment",
+}
 
 
 class JobCreate(BaseModel):
@@ -198,7 +205,14 @@ def _active_customer_jobs(uid: str) -> list[dict]:
         .eq("customer_uid", uid)
         .in_(
             "status",
-            ["open", "assigned", "accepted", "arriving", "in_progress"],
+            [
+                "open",
+                "assigned",
+                "accepted",
+                "arriving",
+                "in_progress",
+                "awaiting_payment",
+            ],
         )
         .order("created_at", desc=True)
         .execute()
@@ -216,7 +230,14 @@ def _active_customer_job(uid: str, job_id: Optional[str] = None) -> Optional[dic
             .eq("id", job_id)
             .in_(
                 "status",
-                ["open", "assigned", "accepted", "arriving", "in_progress"],
+                [
+                    "open",
+                    "assigned",
+                    "accepted",
+                    "arriving",
+                    "in_progress",
+                    "awaiting_payment",
+                ],
             )
             .maybe_single()
             .execute()
@@ -475,6 +496,7 @@ def cancel_job(job_id: str, current_user: CurrentUser = Depends(get_current_user
             "completed",
             "cancelled",
             "in_progress",
+            "awaiting_payment",
             "started",
             "pickup",
             "loaded",

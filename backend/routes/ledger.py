@@ -7,7 +7,14 @@ router = APIRouter()
 
 
 PAID_STATUSES = {"completed", "paid"}
-ACTIVE_STATUSES = {"accepted", "pending", "in_progress"}
+ACTIVE_STATUSES = {
+    "accepted",
+    "assigned",
+    "arriving",
+    "pending",
+    "in_progress",
+    "awaiting_payment",
+}
 
 
 @router.get("/{uid}")
@@ -55,4 +62,3 @@ def get_ledger(uid: str, current_user: CurrentUser = Depends(get_current_user)):
         return {"uid": uid, "summary": summary, "entries": entries}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-

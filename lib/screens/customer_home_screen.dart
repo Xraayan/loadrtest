@@ -769,6 +769,7 @@ String _bookingTileSubtitle(Map<String, dynamic> booking) {
   final status = '${booking['status'] ?? ''}'.trim().toLowerCase();
   if (status == 'arriving') return 'Driver reaching pickup';
   if (status == 'in_progress') return 'Pickup confirmed';
+  if (status == 'awaiting_payment') return 'Payment due';
   if (status == 'completed') return 'Trip completed';
   return _bookingAccepted(booking) ? 'Driver accepted' : '1 open move';
 }
@@ -777,6 +778,7 @@ String _bookingStatusLabel(Map<String, dynamic> booking) {
   final status = '${booking['status'] ?? ''}'.trim().toLowerCase();
   if (status == 'arriving') return 'Arriving';
   if (status == 'in_progress') return 'On trip';
+  if (status == 'awaiting_payment') return 'Pay now';
   if (status == 'completed') return 'Done';
   return _bookingAccepted(booking) ? 'Accepted' : 'Open';
 }
@@ -787,6 +789,7 @@ bool _bookingAccepted(Map<String, dynamic> booking) {
       status == 'accepted' ||
       status == 'arriving' ||
       status == 'in_progress' ||
+      status == 'awaiting_payment' ||
       status == 'completed' ||
       '${booking['assigned_driver_uid'] ?? ''}'.trim().isNotEmpty;
 }

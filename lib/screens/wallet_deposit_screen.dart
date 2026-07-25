@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:loadr/constants.dart';
+import 'package:loadr/services/api_service.dart';
 import 'package:loadr/widgets/bottom_nav.dart';
 
 class WalletDepositScreen extends StatefulWidget {
@@ -11,13 +12,39 @@ class WalletDepositScreen extends StatefulWidget {
 
 class _WalletDepositScreenState extends State<WalletDepositScreen> {
   final _upiController = TextEditingController();
-  final List<int> _quickAmounts = [100, 200, 300, 500];
-  int _selectedAmount = 200;
+  Map<String, dynamic>? _ledger;
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLedger();
+  }
 
   @override
   void dispose() {
     _upiController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadLedger() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final uid = await ApiService.getUid();
+      if (uid == null) throw Exception('User not authenticated');
+      final ledger = await ApiService.getDriverLedger(uid);
+      if (!mounted) return;
+      setState(() => _ledger = ledger);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = '$e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -47,73 +74,60 @@ class _WalletDepositScreenState extends State<WalletDepositScreen> {
         ),
         centerTitle: true,
       ),
-      body: SafeArea(
-        top: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-          children: [
-            _BalanceCard(amount: _selectedAmount),
-            const SizedBox(height: 18),
-            const Text(
-              'Add money',
-              style: TextStyle(
-                color: Colors.black87,
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 12),
-            _AmountSelector(
-              amounts: _quickAmounts,
-              selectedAmount: _selectedAmount,
-              onChanged: (amount) => setState(() => _selectedAmount = amount),
-            ),
-            const SizedBox(height: 18),
-            _UpiCard(controller: _upiController),
-            const SizedBox(height: 18),
-            _WalletInfoCard(
-              title: 'Recent activity',
-              subtitle: 'Accepted trip payouts will appear here.',
-              icon: Icons.receipt_long_outlined,
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                onPressed: () {},
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: kPrimaryOrange,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                child: Text(
-                  'Add Rs $_selectedAmount',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                  ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SafeArea(
+              top: false,
+              child: RefreshIndicator(
+                onRefresh: _loadLedger,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                  children: [
+                    _BalanceCard(summary: _summary),
+                    const SizedBox(height: 18),
+                    _UpiCard(controller: _upiController),
+                    const SizedBox(height: 18),
+                    if (_error != null)
+                      _WalletInfoCard(
+                        title: 'Wallet unavailable',
+                        subtitle: _error!,
+                        icon: Icons.error_outline,
+                      )
+                    else
+                      _LedgerList(entries: _entries),
+                  ],
                 ),
               ),
             ),
-          ],
-        ),
-      ),
       bottomNavigationBar: const BottomNav(selectedIndex: 1),
     );
+  }
+
+  Map<String, dynamic> get _summary {
+    final summary = _ledger?['summary'];
+    return summary is Map ? Map<String, dynamic>.from(summary) : {};
+  }
+
+  List<Map<String, dynamic>> get _entries {
+    final entries = _ledger?['entries'];
+    if (entries is! List) return [];
+    return entries
+        .whereType<Map>()
+        .map((entry) => Map<String, dynamic>.from(entry))
+        .toList();
   }
 }
 
 class _BalanceCard extends StatelessWidget {
-  final int amount;
+  final Map<String, dynamic> summary;
 
-  const _BalanceCard({required this.amount});
+  const _BalanceCard({required this.summary});
 
   @override
   Widget build(BuildContext context) {
+    final totalEarned = _asDouble(summary['total_earned']);
+    final pendingAmount = _asDouble(summary['pending_amount']);
+    final completedTrips = _asInt(summary['completed_trips']);
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -159,8 +173,8 @@ class _BalanceCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Rs 0',
+          Text(
+            'Rs ${totalEarned.toStringAsFixed(0)}',
             style: TextStyle(
               color: Colors.black87,
               fontSize: 36,
@@ -169,56 +183,14 @@ class _BalanceCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Ready to add Rs $amount',
-            style: const TextStyle(
+            'Pending Rs ${pendingAmount.toStringAsFixed(0)} - $completedTrips completed trips',
+            style: TextStyle(
               color: kPrimaryOrange,
               fontWeight: FontWeight.w800,
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _AmountSelector extends StatelessWidget {
-  final List<int> amounts;
-  final int selectedAmount;
-  final ValueChanged<int> onChanged;
-
-  const _AmountSelector({
-    required this.amounts,
-    required this.selectedAmount,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: [
-        for (final amount in amounts)
-          ChoiceChip(
-            selected: selectedAmount == amount,
-            label: Text('Rs $amount'),
-            onSelected: (_) => onChanged(amount),
-            selectedColor: kPrimaryOrange,
-            backgroundColor: Colors.white,
-            labelStyle: TextStyle(
-              color: selectedAmount == amount ? Colors.white : Colors.black87,
-              fontWeight: FontWeight.w800,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(999),
-              side: BorderSide(
-                color: selectedAmount == amount
-                    ? kPrimaryOrange
-                    : const Color(0xFFE3E3E3),
-              ),
-            ),
-          ),
-      ],
     );
   }
 }
@@ -241,11 +213,103 @@ class _UpiCard extends StatelessWidget {
         controller: controller,
         keyboardType: TextInputType.emailAddress,
         decoration: const InputDecoration(
-          labelText: 'UPI ID',
+          labelText: 'Withdrawal UPI ID',
           hintText: 'name@upi',
           prefixIcon: Icon(Icons.qr_code_2_outlined),
           border: InputBorder.none,
         ),
+      ),
+    );
+  }
+}
+
+class _LedgerList extends StatelessWidget {
+  final List<Map<String, dynamic>> entries;
+
+  const _LedgerList({required this.entries});
+
+  @override
+  Widget build(BuildContext context) {
+    if (entries.isEmpty) {
+      return const _WalletInfoCard(
+        title: 'Recent activity',
+        subtitle: 'Paid trip amounts will appear here.',
+        icon: Icons.receipt_long_outlined,
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Recent activity',
+          style: TextStyle(
+            color: Colors.black87,
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 12),
+        for (final entry in entries.take(12)) _LedgerRow(entry: entry),
+      ],
+    );
+  }
+}
+
+class _LedgerRow extends StatelessWidget {
+  final Map<String, dynamic> entry;
+
+  const _LedgerRow({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    final amount = _asDouble(entry['amount']);
+    final status = '${entry['status'] ?? 'pending'}';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFEDEDED)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.receipt_long_outlined, color: kPrimaryOrange),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${entry['title'] ?? 'Trip'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  status.replaceAll('_', ' ').toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.black54,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            'Rs ${amount.toStringAsFixed(0)}',
+            style: const TextStyle(
+              color: Colors.black87,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -298,6 +362,16 @@ class _WalletInfoCard extends StatelessWidget {
       ),
     );
   }
+}
+
+double _asDouble(Object? value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse('$value') ?? 0;
+}
+
+int _asInt(Object? value) {
+  if (value is num) return value.toInt();
+  return int.tryParse('$value') ?? 0;
 }
 
 class _StatusPill extends StatelessWidget {

@@ -142,7 +142,7 @@ def update_trip_status(
             get_supabase().table("jobs").update(
                 {"status": next_status, "updated_at": now}
             ).eq("id", job_id).execute()
-            if next_status == "completed":
+            if next_status in {"awaiting_payment", "completed"}:
                 try:
                     job = (
                         get_supabase()
@@ -155,11 +155,21 @@ def update_trip_status(
                     )
                     customer_uid = (job or {}).get("customer_uid")
                     if customer_uid:
+                        title = (
+                            "Payment due"
+                            if next_status == "awaiting_payment"
+                            else "Trip completed"
+                        )
+                        message = (
+                            "Your load has reached drop-off. Please complete payment."
+                            if next_status == "awaiting_payment"
+                            else "Your load has reached the drop-off location."
+                        )
                         get_supabase().table("notifications").insert(
                             {
                                 "user_uid": customer_uid,
-                                "title": "Trip completed",
-                                "message": "Your load has reached the drop-off location.",
+                                "title": title,
+                                "message": message,
                                 "type": "trip",
                                 "read": False,
                                 "created_at": now,
@@ -169,6 +179,93 @@ def update_trip_status(
                     pass
 
         return {"message": "Trip status updated", "trip": _format_trip(trip)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/trip/{trip_id}/pay")
+def pay_trip(
+    trip_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Customer confirms payment; completed trips are counted in driver wallet."""
+    try:
+        supabase = get_supabase()
+        trip = (
+            supabase
+            .table("trips")
+            .select("*")
+            .eq("id", trip_id)
+            .maybe_single()
+            .execute()
+            .data
+        )
+        if not trip:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Trip not found",
+            )
+
+        job_id = trip.get("job_id")
+        job = None
+        if job_id:
+            job = (
+                supabase
+                .table("jobs")
+                .select("*")
+                .eq("id", job_id)
+                .maybe_single()
+                .execute()
+                .data
+            )
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Linked job is missing",
+            )
+
+        require_current_user_uid(job.get("customer_uid"), current_user)
+        if trip.get("status") == "completed":
+            return {"message": "Payment already completed", "trip": _format_trip(trip)}
+        if trip.get("status") != "awaiting_payment":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Trip is not ready for payment",
+            )
+
+        now = _now()
+        updated = (
+            supabase
+            .table("trips")
+            .update({"status": "completed", "updated_at": now})
+            .eq("id", trip_id)
+            .execute()
+            .data
+        )
+        trip = updated[0] if updated else {**trip, "status": "completed"}
+        supabase.table("jobs").update(
+            {"status": "completed", "updated_at": now}
+        ).eq("id", job_id).execute()
+
+        driver_uid = trip.get("driver_uid")
+        if driver_uid:
+            try:
+                supabase.table("notifications").insert(
+                    {
+                        "user_uid": driver_uid,
+                        "title": "Payment received",
+                        "message": "Trip amount has been added to your wallet.",
+                        "type": "trip",
+                        "read": False,
+                        "created_at": now,
+                    }
+                ).execute()
+            except Exception:
+                pass
+
+        return {"message": "Payment completed", "trip": _format_trip(trip)}
     except HTTPException:
         raise
     except Exception as e:

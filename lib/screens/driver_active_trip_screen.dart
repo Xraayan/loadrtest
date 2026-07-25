@@ -592,11 +592,11 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
 
     setState(() => _isUpdatingStatus = true);
     try {
-      await ApiService.updateTripStatus(tripId, 'completed');
+      await ApiService.updateTripStatus(tripId, 'awaiting_payment');
       await ApiService.clearDriverActiveJob();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Trip completed')),
+        const SnackBar(content: Text('Waiting for customer payment')),
       );
       Navigator.pushReplacementNamed(context, '/dashboard');
     } catch (e) {
@@ -1099,6 +1099,7 @@ bool _isPickedUp(Map<String, dynamic> job) {
       status == 'started' ||
       status == 'pickup' ||
       status == 'loaded' ||
+      status == 'awaiting_payment' ||
       status == 'completed';
 }
 

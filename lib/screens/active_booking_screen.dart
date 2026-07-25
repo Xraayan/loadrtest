@@ -25,6 +25,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
   bool _isLoading = true;
   bool _isRefreshing = false;
   bool _isCanceling = false;
+  bool _isPaying = false;
   bool _isRefreshingRoute = false;
   bool _isRefreshingLiveDriverRoute = false;
   DateTime? _lastRouteRefreshAt;
@@ -381,6 +382,13 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
 
     final pickup = _placeFromBooking(booking, 'pickup');
     final drop = _placeFromBooking(booking, 'dropoff');
+    if (_isAwaitingPayment(booking)) {
+      return _TripPaymentScreen(
+        booking: booking,
+        paying: _isPaying,
+        onPay: _payTrip,
+      );
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F7),
@@ -489,11 +497,234 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
     }
   }
 
+  Future<void> _payTrip() async {
+    final booking = _booking;
+    final tripId = _tripIdFromBooking(booking);
+    if (tripId == null || _isPaying) return;
+
+    setState(() => _isPaying = true);
+    try {
+      await ApiService.payTrip(tripId);
+      await ApiService.clearCustomerActiveBooking();
+      if (!mounted) return;
+      setState(() => _booking = null);
+      _syncDriverLocationChannel(null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Payment completed')),
+      );
+      Navigator.pushReplacementNamed(context, '/customer-home');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Payment failed: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isPaying = false);
+      }
+    }
+  }
+
   @override
   void dispose() {
     _bookingSubscription?.cancel();
     unawaited(SupabaseRealtimeService.removeChannel(_driverLocationChannel));
     super.dispose();
+  }
+}
+
+class _TripPaymentScreen extends StatelessWidget {
+  final Map<String, dynamic> booking;
+  final bool paying;
+  final VoidCallback onPay;
+
+  const _TripPaymentScreen({
+    required this.booking,
+    required this.paying,
+    required this.onPay,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final amount = _asDouble(booking['amount']);
+    final pickup = _shortLocation(_text(booking['pickup_location']));
+    final drop = _shortLocation(_text(booking['dropoff_location']));
+    final distanceKm = _asDouble(booking['distance_km']);
+    final driver = booking['driver'];
+    final driverMap =
+        driver is Map ? Map<String, dynamic>.from(driver) : <String, dynamic>{};
+    final driverName = _text(driverMap['name'], fallback: 'Driver');
+    final vehicleType = _text(booking['vehicle_type'], fallback: 'Vehicle');
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F7F7),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFF7F7F7),
+        elevation: 0,
+        title: const Text(
+          'Complete payment',
+          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w900),
+        ),
+        centerTitle: true,
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFEDEDED)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.verified_outlined,
+                    color: kPrimaryOrange,
+                    size: 34,
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Load delivered',
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Pay the trip amount to complete this booking.',
+                    style: TextStyle(
+                      color: Colors.black54,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Rs ${amount.toStringAsFixed(0)}',
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontSize: 40,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            _PaymentDetailRow(
+              icon: Icons.person_outline,
+              label: 'Driver',
+              value: driverName,
+            ),
+            _PaymentDetailRow(
+              icon: Icons.local_shipping_outlined,
+              label: 'Vehicle',
+              value: vehicleType,
+            ),
+            _PaymentDetailRow(
+              icon: Icons.trip_origin,
+              label: 'Pickup',
+              value: pickup,
+            ),
+            _PaymentDetailRow(
+              icon: Icons.stop,
+              label: 'Drop',
+              value: drop,
+            ),
+            if (distanceKm > 0)
+              _PaymentDetailRow(
+                icon: Icons.route_outlined,
+                label: 'Distance',
+                value: '${distanceKm.toStringAsFixed(1)} km',
+              ),
+            const SizedBox(height: 22),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton.icon(
+                onPressed: paying ? null : onPay,
+                icon: paying
+                    ? const SkeletonBox(width: 18, height: 18, radius: 4)
+                    : const Icon(Icons.payments_outlined),
+                label: Text(
+                  paying
+                      ? 'Completing...'
+                      : 'Pay Rs ${amount.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kPrimaryOrange,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PaymentDetailRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _PaymentDetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFEDEDED)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: kPrimaryOrange),
+          const SizedBox(width: 12),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.black54,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.black87,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1295,6 +1526,14 @@ _BookingStatus _bookingStatus(Map<String, dynamic> booking) {
     );
   }
 
+  if (rawStatus == 'awaiting_payment') {
+    return const _BookingStatus(
+      title: 'Payment due',
+      subtitle: 'Your load has reached drop-off. Complete payment to finish.',
+      pill: 'Pay now',
+    );
+  }
+
   if (rawStatus == 'arriving') {
     return const _BookingStatus(
       title: 'Driver is reaching pickup',
@@ -1335,6 +1574,7 @@ bool _isAccepted(Map<String, dynamic> booking) {
       status == 'accepted' ||
       status == 'arriving' ||
       status == 'in_progress' ||
+      status == 'awaiting_payment' ||
       status == 'completed' ||
       _text(booking['assigned_driver_uid']).isNotEmpty;
 }
@@ -1344,7 +1584,12 @@ bool _isOnTrip(Map<String, dynamic> booking) {
   return status == 'in_progress' ||
       status == 'started' ||
       status == 'pickup' ||
-      status == 'loaded';
+      status == 'loaded' ||
+      status == 'awaiting_payment';
+}
+
+bool _isAwaitingPayment(Map<String, dynamic> booking) {
+  return _text(booking['status']).toLowerCase() == 'awaiting_payment';
 }
 
 PlaceSuggestion? _placeFromBooking(
@@ -1495,6 +1740,14 @@ String _shortLocation(String value) {
 String? _jobIdFromBooking(Map<String, dynamic>? booking) {
   final jobId = _text(booking?['job_id'], fallback: _text(booking?['id']));
   return jobId.isEmpty ? null : jobId;
+}
+
+String? _tripIdFromBooking(Map<String, dynamic>? booking) {
+  final tripId = _text(
+    booking?['trip_id'],
+    fallback: _text(booking?['assigned_trip_id']),
+  );
+  return tripId.isEmpty ? null : tripId;
 }
 
 String? _driverUidFromBooking(Map<String, dynamic>? booking) {

@@ -1149,6 +1149,53 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> payTrip(String tripId) async {
+    try {
+      final token = await getAuthToken();
+      final response = await http.post(
+        Uri.parse('$baseUrl/trips/trip/$tripId/pay'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      throw Exception(_errorMessage(
+        response.body,
+        fallback: 'Failed to complete payment',
+      ));
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> getDriverLedger(String uid) async {
+    try {
+      final token = await getAuthToken();
+      final response = await http.get(
+        Uri.parse('$baseUrl/ledger/$uid'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map) return Map<String, dynamic>.from(data);
+      }
+      throw Exception(_errorMessage(
+        response.body,
+        fallback: 'Failed to load wallet',
+      ));
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
   // Update location
   static Future<void> updateLocation(
       String uid, Map<String, dynamic> location) async {
