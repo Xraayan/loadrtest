@@ -182,14 +182,10 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
     final distanceKm = routeArgs.estimate.distanceKm;
     final quote = routeArgs.estimate.quoteFor(routeArgs.vehicleType);
     final routePoints = routeArgs.estimate.routePoints;
-    final pickupPoint = routePoints.isEmpty
-        ? LatLng(routeArgs.pickup.latitude, routeArgs.pickup.longitude)
-        : routePoints.first;
-    final dropPoint = routePoints.isEmpty
-        ? LatLng(routeArgs.drop.latitude, routeArgs.drop.longitude)
-        : routePoints.last;
-    final cameraPoints =
-        routePoints.isEmpty ? [pickupPoint, dropPoint] : routePoints;
+    final pickupPoint =
+        LatLng(routeArgs.pickup.latitude, routeArgs.pickup.longitude);
+    final dropPoint = LatLng(routeArgs.drop.latitude, routeArgs.drop.longitude);
+    final cameraPoints = [pickupPoint, ...routePoints, dropPoint];
     final markerSize = routeMarkerSizeForZoom(_zoom);
     final nearbyDriverSize = nearbyDriverMarkerSizeForZoom(_zoom);
     return Scaffold(

@@ -309,7 +309,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
     if (pickup == null || drop == null) return;
 
     final currentPoints = _routePointsFromBooking(booking);
-    if (currentPoints.length > 2) return;
+    if (currentPoints.length >= 2) return;
 
     final lastTry = _lastRouteRefreshAt;
     if (lastTry != null &&
@@ -328,7 +328,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
             : _text(booking['vehicle_type']),
         schedule: 'Now',
       );
-      if (estimate.routePoints.length <= 2 || !mounted) return;
+      if (estimate.routePoints.length < 2 || !mounted) return;
 
       final next = {
         ...booking,
@@ -353,7 +353,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
   }
 
   Object? _betterRoutePoints(Object? current, Object? incoming) {
-    if (_routePointCount(current) > 2 && _routePointCount(incoming) <= 2) {
+    if (_routePointCount(current) >= 2 && _routePointCount(incoming) < 2) {
       return current;
     }
     return incoming ?? current;
@@ -531,21 +531,24 @@ class _RouteMapState extends State<_RouteMap> {
 
   @override
   Widget build(BuildContext context) {
-    final routePoints = widget.pickedUp && widget.driverPoint != null
-        ? _trimRouteFrom(widget.driverPoint!, widget.routePoints)
-        : widget.routePoints;
+    final staticRoutePoints = widget.routePoints;
     final driverRoutePoints =
         widget.pickedUp ? const <LatLng>[] : widget.driverRoutePoints;
-    final pickupPoint = widget.routePoints.isEmpty
+    final routePoints = widget.pickedUp && widget.driverPoint != null
+        ? _trimRouteFrom(widget.driverPoint!, staticRoutePoints)
+        : widget.pickedUp
+            ? staticRoutePoints
+            : [...driverRoutePoints, ...staticRoutePoints];
+    final pickupPoint = staticRoutePoints.isEmpty
         ? LatLng(widget.pickup.latitude, widget.pickup.longitude)
-        : widget.routePoints.first;
-    final dropPoint = routePoints.isEmpty
-        ? LatLng(widget.drop.latitude, widget.drop.longitude)
-        : routePoints.last;
+        : staticRoutePoints.first;
+    final rawDropPoint = LatLng(widget.drop.latitude, widget.drop.longitude);
+    final dropPoint = widget.pickedUp
+        ? (routePoints.isEmpty ? rawDropPoint : routePoints.last)
+        : (staticRoutePoints.isEmpty ? rawDropPoint : staticRoutePoints.last);
     final mapStart = widget.driverPoint ?? pickupPoint;
     final cameraPoints = [
       mapStart,
-      ...driverRoutePoints,
       ...routePoints,
       dropPoint,
     ];
@@ -593,14 +596,6 @@ class _RouteMapState extends State<_RouteMap> {
             ),
             PolylineLayer(
               polylines: [
-                if (driverRoutePoints.length >= 2)
-                  Polyline(
-                    points: driverRoutePoints,
-                    color: const Color(0xFF333333),
-                    strokeWidth: _zoom < 11 ? 3 : 5,
-                    borderColor: Colors.white,
-                    borderStrokeWidth: _zoom < 11 ? 1 : 2,
-                  ),
                 if (routePoints.length >= 2)
                   Polyline(
                     points: routePoints,
@@ -1382,7 +1377,7 @@ List<LatLng> _routePointsFromBooking(Map<String, dynamic> booking) {
     }).where((point) {
       return point.latitude != 0 && point.longitude != 0;
     }).toList();
-    if (routePoints.length > 2) return routePoints;
+    if (routePoints.length >= 2) return routePoints;
   }
 
   return [];
@@ -1399,7 +1394,7 @@ List<LatLng> _driverRoutePointsFromBooking(Map<String, dynamic> booking) {
   }).where((point) {
     return point.latitude != 0 && point.longitude != 0;
   }).toList();
-  return routePoints.length > 2 ? routePoints : [];
+  return routePoints.length >= 2 ? routePoints : [];
 }
 
 int _routePointCount(Object? value) {

@@ -726,5 +726,5 @@ List<LatLng> _routePointsFromJob(Map<String, dynamic> job) {
   }).where((point) {
     return point.latitude != 0 && point.longitude != 0;
   }).toList();
-  return routePoints.length > 2 ? routePoints : [];
+  return routePoints.length >= 2 ? routePoints : [];
 }

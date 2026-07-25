@@ -92,7 +92,7 @@ class RideEstimate {
       distanceKm: VehicleQuote._toDouble(json['distance_km']),
       selectedQuote: selected,
       vehicleQuotes: quotes,
-      routePoints: routePoints.length > 2 ? routePoints : const [],
+      routePoints: routePoints.length >= 2 ? routePoints : const [],
       city: '${metadata['city'] ?? ''}',
       district: '${metadata['district'] ?? ''}',
       state: '${metadata['state'] ?? ''}',

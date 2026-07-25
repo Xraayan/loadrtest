@@ -185,21 +185,21 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
         ? savedLoadRoutePoints
         : estimate.routePoints;
     final liveRoutePoints = approachEstimate.routePoints;
+    final fullRoutePoints =
+        pickedUp ? liveRoutePoints : [...liveRoutePoints, ...loadRoutePoints];
     final pickupPoint = liveRoutePoints.isEmpty
         ? rawPickupPoint
         : liveRoutePoints.last;
-    final activeLoadRoutePoints = pickedUp
-        ? liveRoutePoints
-        : loadRoutePoints;
-    final dropPoint = activeLoadRoutePoints.isEmpty
-        ? rawDropPoint
-        : activeLoadRoutePoints.last;
-    final routedCameraPoints = pickedUp
-        ? activeLoadRoutePoints
-        : [...liveRoutePoints, ...loadRoutePoints];
-    final cameraPoints = routedCameraPoints.isEmpty
-        ? [currentPoint, pickupPoint, dropPoint]
-        : routedCameraPoints;
+    final dropPoint = pickedUp
+        ? (liveRoutePoints.isEmpty ? rawDropPoint : liveRoutePoints.last)
+        : (loadRoutePoints.isEmpty ? rawDropPoint : loadRoutePoints.last);
+    final routedCameraPoints = fullRoutePoints;
+    final cameraPoints = [
+      currentPoint,
+      ...routedCameraPoints,
+      pickupPoint,
+      dropPoint,
+    ];
     final distanceToPickupKm = _distanceKm(currentPoint, rawPickupPoint);
     final distanceToDropKm = _distanceKm(currentPoint, rawDropPoint);
     final distanceToNextKm = approachEstimate.distanceKm > 0
@@ -259,17 +259,9 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
                 ),
                 PolylineLayer(
                   polylines: [
-                    if (!pickedUp && liveRoutePoints.length >= 2)
+                    if (fullRoutePoints.length >= 2)
                       Polyline(
-                        points: liveRoutePoints,
-                        color: const Color(0xFF333333),
-                        strokeWidth: 5,
-                        borderColor: Colors.white,
-                        borderStrokeWidth: 3,
-                      ),
-                    if (activeLoadRoutePoints.length >= 2)
-                      Polyline(
-                        points: activeLoadRoutePoints,
+                        points: fullRoutePoints,
                         color: kPrimaryOrange,
                         strokeWidth: 6,
                         borderColor: Colors.white,
@@ -422,20 +414,18 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
       ),
     ).listen((position) async {
       final point = LatLng(position.latitude, position.longitude);
-      try {
-        await ApiService.updateLocation(uid, {
-          'latitude': position.latitude,
-          'longitude': position.longitude,
-          'is_active': true,
-        });
-        if (_driverLocationChannel == null && mounted) {
-          setState(() => _currentPoint = point);
-          _markArrivingIfNearPickup(point);
-          unawaited(_refreshLiveRoute(point));
-        }
-      } catch (_) {
-        // The next movement update retries automatically.
+      if (mounted) {
+        setState(() => _currentPoint = point);
+        _markArrivingIfNearPickup(point);
+        unawaited(_refreshLiveRoute(point));
       }
+      unawaited(ApiService.updateLocation(uid, {
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'is_active': true,
+      }).catchError((_) {
+        // The next movement update retries automatically.
+      }));
     }, onError: (_) {});
   }
 
@@ -528,16 +518,16 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
         ),
       );
       final point = LatLng(position.latitude, position.longitude);
+      if (mounted) {
+        setState(() => _currentPoint = point);
+        _markArrivingIfNearPickup(point);
+        unawaited(_refreshLiveRoute(point));
+      }
       await ApiService.updateLocation(uid, {
         'latitude': position.latitude,
         'longitude': position.longitude,
         'is_active': true,
       });
-      if (_driverLocationChannel == null && mounted) {
-        setState(() => _currentPoint = point);
-        _markArrivingIfNearPickup(point);
-        unawaited(_refreshLiveRoute(point));
-      }
     } catch (_) {}
   }
 
@@ -1176,5 +1166,5 @@ List<LatLng> _routePointsFromJob(Map<String, dynamic> job) {
   }).where((point) {
     return point.latitude != 0 && point.longitude != 0;
   }).toList();
-  return routePoints.length > 2 ? routePoints : [];
+  return routePoints.length >= 2 ? routePoints : [];
 }

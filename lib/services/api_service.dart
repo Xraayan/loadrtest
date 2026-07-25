@@ -889,7 +889,7 @@ class ApiService {
       if (cached is Map) {
         final estimate =
             RideEstimate.fromJson(Map<String, dynamic>.from(cached));
-        if (estimate.routePoints.length > 2) return estimate;
+        if (estimate.routePoints.length >= 2) return estimate;
       }
     }
 
@@ -931,7 +931,7 @@ class ApiService {
         if (stale is Map) {
           final estimate =
               RideEstimate.fromJson(Map<String, dynamic>.from(stale));
-          if (estimate.routePoints.length > 2) return estimate;
+          if (estimate.routePoints.length >= 2) return estimate;
         }
       }
       throw Exception('Error: $e');

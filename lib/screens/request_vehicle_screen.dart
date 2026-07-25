@@ -1078,7 +1078,9 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
     });
 
     try {
-      final place = _resolvedPlace ?? await _reverseLookup(_selectedPoint);
+      final place = _placeAtSelectedPoint(
+        _resolvedPlace ?? await _reverseLookup(_selectedPoint),
+      );
       if (!mounted) return;
       Navigator.pop(
         context,
@@ -1092,6 +1094,17 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
         setState(() => _loading = false);
       }
     }
+  }
+
+  PlaceSuggestion _placeAtSelectedPoint(PlaceSuggestion place) {
+    return PlaceSuggestion(
+      displayName: place.displayName,
+      latitude: _selectedPoint.latitude,
+      longitude: _selectedPoint.longitude,
+      city: place.city,
+      district: place.district,
+      state: place.state,
+    );
   }
 
   @override
