@@ -1176,5 +1176,8 @@ List<LatLng> _routePointsFromJob(Map<String, dynamic> job) {
   }).where((point) {
     return point.latitude != 0 && point.longitude != 0;
   }).toList();
-  return routePoints.length >= 2 ? routePoints : [];
+  final distanceKm = _asDouble(job['distance_km']);
+  if (routePoints.length > 2) return routePoints;
+  if (routePoints.length >= 2 && distanceKm <= 0.5) return routePoints;
+  return [];
 }

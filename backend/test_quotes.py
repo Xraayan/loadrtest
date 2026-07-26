@@ -9,7 +9,9 @@ from routes.quotes import LocationPoint, _route_for, _route_points_from_geometry
 class _Response:
     def __init__(self, distance=1250, coordinates=None, payload=None):
         self.distance = distance
-        self.coordinates = coordinates or [[[76.5, 9.5], [76.51, 9.51]]]
+        self.coordinates = coordinates or [
+            [[76.5, 9.5], [76.505, 9.505], [76.51, 9.51]]
+        ]
         self.payload = payload
 
     def __enter__(self):
@@ -45,7 +47,7 @@ class RouteForTest(unittest.TestCase):
         distance_km, points = _route_for(start, end)
 
         self.assertEqual(distance_km, 1.25)
-        self.assertEqual(points[1], {"latitude": 9.51, "longitude": 76.51})
+        self.assertEqual(points[-1], {"latitude": 9.51, "longitude": 76.51})
         self.assertIn("format=geojson", urlopen_mock.call_args[0][0].full_url)
         self.assertIn("mode=light_truck", urlopen_mock.call_args[0][0].full_url)
 

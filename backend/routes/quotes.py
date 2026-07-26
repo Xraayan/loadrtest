@@ -291,6 +291,8 @@ def _geoapify_route_for(
         distance_m = float(feature.get("properties", {}).get("distance") or 0)
         if len(points) < 2 or distance_m <= 0:
             raise ValueError(f"{mode} returned no usable route")
+        if len(points) == 2 and distance_m > 500:
+            raise ValueError(f"{mode} returned endpoint-only route")
         return distance_m / 1000, points
     except HTTPError as error:
         detail = error.read().decode("utf-8", errors="replace")

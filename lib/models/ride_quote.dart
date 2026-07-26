@@ -88,11 +88,13 @@ class RideEstimate {
       return point.latitude != 0 && point.longitude != 0;
     }).toList();
 
+    final distanceKm = VehicleQuote._toDouble(json['distance_km']);
+
     return RideEstimate(
-      distanceKm: VehicleQuote._toDouble(json['distance_km']),
+      distanceKm: distanceKm,
       selectedQuote: selected,
       vehicleQuotes: quotes,
-      routePoints: routePoints.length >= 2 ? routePoints : const [],
+      routePoints: _usableRoutePoints(routePoints, distanceKm),
       city: '${metadata['city'] ?? ''}',
       district: '${metadata['district'] ?? ''}',
       state: '${metadata['state'] ?? ''}',
@@ -106,4 +108,10 @@ class RideEstimate {
       orElse: () => selectedQuote,
     );
   }
+}
+
+List<LatLng> _usableRoutePoints(List<LatLng> points, double distanceKm) {
+  if (points.length > 2) return points;
+  if (points.length >= 2 && distanceKm <= 0.5) return points;
+  return const [];
 }

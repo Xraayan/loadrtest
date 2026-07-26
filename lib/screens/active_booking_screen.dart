@@ -1622,7 +1622,9 @@ List<LatLng> _routePointsFromBooking(Map<String, dynamic> booking) {
     }).where((point) {
       return point.latitude != 0 && point.longitude != 0;
     }).toList();
-    if (routePoints.length >= 2) return routePoints;
+    final distanceKm = _asDouble(booking['distance_km']);
+    if (routePoints.length > 2) return routePoints;
+    if (routePoints.length >= 2 && distanceKm <= 0.5) return routePoints;
   }
 
   return [];
