@@ -7,6 +7,7 @@ import 'package:loadr/screens/landing_screen.dart';
 import 'package:loadr/screens/location_screen.dart';
 import 'package:loadr/screens/role_selection_screen.dart';
 import 'package:loadr/services/api_service.dart';
+import 'package:loadr/widgets/skeleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthGate extends StatefulWidget {
@@ -35,7 +36,7 @@ class _AuthGateState extends State<AuthGate> {
           return snapshot.data!;
         }
 
-        return const _BrandLoadingScreen();
+        return const _AppLoadingSkeleton();
       },
     );
   }
@@ -87,29 +88,58 @@ class _AuthGateState extends State<AuthGate> {
   }
 }
 
-class _BrandLoadingScreen extends StatelessWidget {
-  const _BrandLoadingScreen();
+class _AppLoadingSkeleton extends StatelessWidget {
+  const _AppLoadingSkeleton();
 
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      backgroundColor: Colors.white,
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Image(
-              image: AssetImage('assets/loadr_logo.png'),
-              width: 92,
-              height: 92,
-            ),
-            SizedBox(height: 18),
-            SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(strokeWidth: 3),
-            ),
-          ],
+      backgroundColor: Color(0xFFF7F7F7),
+      body: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(20, 18, 20, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SkeletonBox(width: 78, height: 14, radius: 4),
+                        SizedBox(height: 8),
+                        SkeletonBox(width: 164, height: 31, radius: 8),
+                      ],
+                    ),
+                  ),
+                  SkeletonBox(width: 48, height: 48, radius: 24),
+                ],
+              ),
+              SizedBox(height: 24),
+              SkeletonBox(height: 190, radius: 18),
+              SizedBox(height: 20),
+              SkeletonBox(width: 110, height: 18, radius: 5),
+              SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(child: SkeletonBox(height: 96, radius: 16)),
+                  SizedBox(width: 12),
+                  Expanded(child: SkeletonBox(height: 96, radius: 16)),
+                ],
+              ),
+              SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(child: SkeletonBox(height: 96, radius: 16)),
+                  SizedBox(width: 12),
+                  Expanded(child: SkeletonBox(height: 96, radius: 16)),
+                ],
+              ),
+              Spacer(),
+              SkeletonBox(height: 64, radius: 18),
+            ],
+          ),
         ),
       ),
     );
