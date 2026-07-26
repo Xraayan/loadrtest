@@ -438,6 +438,7 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
               refreshing: _isRefreshing,
               canceling: _isCanceling,
               onCancel: _cancelPickup,
+              onMessage: _openChat,
             ),
           ),
         ],
@@ -523,6 +524,25 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
         setState(() => _isPaying = false);
       }
     }
+  }
+
+  void _openChat() {
+    final booking = _booking;
+    final otherUid = _driverUidFromBooking(booking);
+    if (booking == null || otherUid == null) return;
+    final driver = booking['driver'];
+    final driverMap =
+        driver is Map ? Map<String, dynamic>.from(driver) : <String, dynamic>{};
+    Navigator.pushNamed(
+      context,
+      '/chat',
+      arguments: {
+        'job_id': _jobIdFromBooking(booking),
+        'trip_id': _tripIdFromBooking(booking),
+        'other_uid': otherUid,
+        'other_name': _text(driverMap['name'], fallback: 'Driver'),
+      },
+    );
   }
 
   @override
@@ -980,6 +1000,7 @@ class _BookingPanel extends StatelessWidget {
   final bool refreshing;
   final bool canceling;
   final VoidCallback onCancel;
+  final VoidCallback onMessage;
 
   const _BookingPanel({
     required this.scrollController,
@@ -987,6 +1008,7 @@ class _BookingPanel extends StatelessWidget {
     required this.refreshing,
     required this.canceling,
     required this.onCancel,
+    required this.onMessage,
   });
 
   @override
@@ -1014,6 +1036,7 @@ class _BookingPanel extends StatelessWidget {
       'started',
       'pickup',
       'loaded',
+      'awaiting_payment',
     }.contains(rawStatus);
 
     return SafeArea(
@@ -1079,6 +1102,7 @@ class _BookingPanel extends StatelessWidget {
                 name: driverName,
                 vehicleNumber: vehicleNumber,
                 locationText: _driverLocationText(booking),
+                onMessage: onMessage,
               )
             else
               const _WaitingDriverCard(),
@@ -1151,11 +1175,13 @@ class _DriverCard extends StatelessWidget {
   final String name;
   final String vehicleNumber;
   final String locationText;
+  final VoidCallback onMessage;
 
   const _DriverCard({
     required this.name,
     required this.vehicleNumber,
     required this.locationText,
+    required this.onMessage,
   });
 
   @override
@@ -1217,7 +1243,15 @@ class _DriverCard extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.verified, color: kPrimaryOrange),
+          IconButton.filledTonal(
+            tooltip: 'Message driver',
+            onPressed: onMessage,
+            icon: const Icon(Icons.chat_bubble_outline),
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: kPrimaryOrange,
+            ),
+          ),
         ],
       ),
     );

@@ -1196,6 +1196,115 @@ class ApiService {
     }
   }
 
+  static Future<List<Map<String, dynamic>>> getChatConversations(String uid) async {
+    try {
+      final token = await getAuthToken();
+      final response = await http.get(
+        Uri.parse('$baseUrl/messages/$uid/conversations'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) {
+        throw Exception(_errorMessage(
+          response.body,
+          fallback: 'Failed to load messages',
+        ));
+      }
+      final data = jsonDecode(response.body);
+      final conversations = data is Map ? data['conversations'] : null;
+      if (conversations is List) {
+        return conversations
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getChatThread({
+    required String uid,
+    required String otherUid,
+    String? jobId,
+  }) async {
+    try {
+      final token = await getAuthToken();
+      final uri = Uri.parse('$baseUrl/messages/$uid/thread').replace(
+        queryParameters: {
+          'other_uid': otherUid,
+          if (jobId != null && jobId.trim().isNotEmpty) 'job_id': jobId.trim(),
+        },
+      );
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) {
+        throw Exception(_errorMessage(
+          response.body,
+          fallback: 'Failed to load chat',
+        ));
+      }
+      final data = jsonDecode(response.body);
+      final messages = data is Map ? data['messages'] : null;
+      if (messages is List) {
+        return messages
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> sendChatMessage({
+    required String uid,
+    required String receiverUid,
+    required String message,
+    String? jobId,
+    String? tripId,
+  }) async {
+    try {
+      final token = await getAuthToken();
+      final response = await http.post(
+        Uri.parse('$baseUrl/messages/$uid/send'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'receiver_uid': receiverUid,
+          'message': message,
+          if (jobId != null && jobId.trim().isNotEmpty) 'job_id': jobId.trim(),
+          if (tripId != null && tripId.trim().isNotEmpty) 'trip_id': tripId.trim(),
+        }),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final sent = data is Map ? data['message'] : null;
+        if (sent is Map) return Map<String, dynamic>.from(sent);
+      }
+      throw Exception(_errorMessage(
+        response.body,
+        fallback: 'Failed to send message',
+      ));
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
   // Update location
   static Future<void> updateLocation(
       String uid, Map<String, dynamic> location) async {

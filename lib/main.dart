@@ -7,7 +7,9 @@ import 'package:loadr/screens/driver_details_screen.dart';
 import 'package:loadr/screens/all_trip_screen.dart';
 import 'package:loadr/screens/customer_details_screen.dart';
 import 'package:loadr/screens/customer_home_screen.dart';
+import 'package:loadr/screens/chat_screen.dart';
 import 'package:loadr/screens/driver_active_trip_screen.dart';
+import 'package:loadr/screens/messages_screen.dart';
 import 'package:loadr/screens/new_trip_screen.dart';
 import 'package:loadr/screens/driver_load_request_screen.dart';
 import 'package:loadr/screens/profile_screen.dart';
@@ -63,6 +65,7 @@ class LoadRApp extends StatelessWidget {
         '/customer-details': (context) => const CustomerDetailsScreen(),
         '/customer-home': (context) => const CustomerHomeScreen(),
         '/active-booking': (context) => const ActiveBookingScreen(),
+        '/chat': (context) => const ChatScreen(),
         '/request-vehicle': (context) => const RequestVehicleScreen(),
         '/request-quote': (context) => const RequestQuoteScreen(),
         '/location': (context) => const LocationScreen(),
@@ -75,6 +78,7 @@ class LoadRApp extends StatelessWidget {
         '/driver-load-request': (context) => const DriverLoadRequestScreen(),
         '/all-trips': (context) => const AllTripScreen(),
         '/new-trips': (context) => const NewTripScreen(),
+        '/messages': (context) => const MessagesScreen(),
         '/driver-details': (context) => const DriverDetailsScreen(),
         '/wallet-deposit': (context) => const WalletDepositScreen(),
         '/profile': (context) => const ProfileScreen(),

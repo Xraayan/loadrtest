@@ -10,6 +10,7 @@ from routes import (
     ledger,
     location,
     map_tiles,
+    messages,
     notifications,
     places,
     preferences,
@@ -47,6 +48,7 @@ app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
 app.include_router(quotes.router, prefix="/api/quotes", tags=["Quotes"])
 app.include_router(places.router, prefix="/api/places", tags=["Places"])
 app.include_router(map_tiles.router, prefix="/api/map", tags=["Map Tiles"])
+app.include_router(messages.router, prefix="/api/messages", tags=["Messages"])
 app.include_router(ledger.router, prefix="/api/ledger", tags=["Ledger"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["Notifications"])
 

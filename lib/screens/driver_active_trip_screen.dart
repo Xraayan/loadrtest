@@ -354,6 +354,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
               onConfirmPickup: _confirmPickup,
               onConfirmDropoff: _confirmDropoff,
               onRefresh: () => _loadTrip(null),
+              onMessage: _openChat,
             ),
           ),
         ],
@@ -611,6 +612,30 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
     }
   }
 
+  void _openChat() {
+    final job = _job;
+    if (job == null) return;
+    final customer = job['customer'];
+    final customerMap = customer is Map
+        ? Map<String, dynamic>.from(customer)
+        : <String, dynamic>{};
+    final customerUid = _text(
+      customerMap['uid'],
+      fallback: _text(customerMap['firebase_uid'], fallback: _text(job['customer_uid'])),
+    );
+    if (customerUid.isEmpty) return;
+    Navigator.pushNamed(
+      context,
+      '/chat',
+      arguments: {
+        'job_id': _text(job['job_id'], fallback: _text(job['id'])),
+        'trip_id': _text(job['trip_id'], fallback: _text(job['assigned_trip_id'])),
+        'other_uid': customerUid,
+        'other_name': _text(customerMap['name'], fallback: 'Customer'),
+      },
+    );
+  }
+
   void _goBack(BuildContext context) {
     if (Navigator.canPop(context)) {
       Navigator.maybePop(context);
@@ -642,6 +667,7 @@ class _TripPanel extends StatelessWidget {
   final VoidCallback onConfirmPickup;
   final VoidCallback onConfirmDropoff;
   final VoidCallback onRefresh;
+  final VoidCallback onMessage;
 
   const _TripPanel({
     required this.scrollController,
@@ -656,6 +682,7 @@ class _TripPanel extends StatelessWidget {
     required this.onConfirmPickup,
     required this.onConfirmDropoff,
     required this.onRefresh,
+    required this.onMessage,
   });
 
   @override
@@ -665,6 +692,10 @@ class _TripPanel extends StatelessWidget {
     final vehicleType = _text(job['vehicle_type'], fallback: 'Vehicle');
     final pickup = _shortLocation(_text(job['pickup_location']));
     final drop = _shortLocation(_text(job['dropoff_location']));
+    final customer = job['customer'];
+    final customerMap =
+        customer is Map ? Map<String, dynamic>.from(customer) : <String, dynamic>{};
+    final customerName = _text(customerMap['name'], fallback: 'Customer');
 
     return SafeArea(
       top: false,
@@ -713,6 +744,8 @@ class _TripPanel extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             _RouteSummary(pickup: pickup, drop: drop),
+            const SizedBox(height: 14),
+            _CustomerCard(name: customerName, onMessage: onMessage),
             const SizedBox(height: 14),
             Row(
               children: [
@@ -804,6 +837,76 @@ class _TripPanel extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CustomerCard extends StatelessWidget {
+  final String name;
+  final VoidCallback onMessage;
+
+  const _CustomerCard({
+    required this.name,
+    required this.onMessage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7F4),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFFFD7CA)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.person_outline, color: kPrimaryOrange),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Customer',
+                  style: TextStyle(
+                    color: Colors.black45,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton.filledTonal(
+            tooltip: 'Message customer',
+            onPressed: onMessage,
+            icon: const Icon(Icons.chat_bubble_outline),
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: kPrimaryOrange,
+            ),
+          ),
+        ],
       ),
     );
   }

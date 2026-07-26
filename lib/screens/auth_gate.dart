@@ -7,7 +7,6 @@ import 'package:loadr/screens/landing_screen.dart';
 import 'package:loadr/screens/location_screen.dart';
 import 'package:loadr/screens/role_selection_screen.dart';
 import 'package:loadr/services/api_service.dart';
-import 'package:loadr/widgets/skeleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthGate extends StatefulWidget {
@@ -36,10 +35,7 @@ class _AuthGateState extends State<AuthGate> {
           return snapshot.data!;
         }
 
-        return const Scaffold(
-          backgroundColor: Colors.white,
-          body: Center(child: SkeletonBox(width: 160, height: 20, radius: 6)),
-        );
+        return const _BrandLoadingScreen();
       },
     );
   }
@@ -88,5 +84,34 @@ class _AuthGateState extends State<AuthGate> {
     final hasDriverLocation = prefs.getDouble('driver_latitude') != null &&
         prefs.getDouble('driver_longitude') != null;
     return hasDriverLocation ? const DriverDetailsScreen() : const LocationScreen();
+  }
+}
+
+class _BrandLoadingScreen extends StatelessWidget {
+  const _BrandLoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Colors.white,
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image(
+              image: AssetImage('assets/loadr_logo.png'),
+              width: 92,
+              height: 92,
+            ),
+            SizedBox(height: 18),
+            SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 3),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

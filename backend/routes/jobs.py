@@ -130,6 +130,32 @@ def _job_with_driver(job: dict) -> dict:
     return formatted_job
 
 
+def _job_with_customer(job: dict) -> dict:
+    formatted_job = _job_with_id(job)
+    customer_uid = job.get("customer_uid")
+    if not customer_uid:
+        return formatted_job
+
+    customer = {"uid": customer_uid}
+    try:
+        profile = (
+            get_supabase()
+            .table("profiles")
+            .select("firebase_uid,name,phone")
+            .eq("firebase_uid", customer_uid)
+            .maybe_single()
+            .execute()
+            .data
+        )
+        if profile:
+            customer.update(profile)
+    except Exception:
+        pass
+
+    formatted_job["customer"] = customer
+    return formatted_job
+
+
 def _trip_with_id(trip: dict) -> dict:
     return {"trip_id": trip.get("id"), "driver_id": trip.get("driver_uid"), **trip}
 
@@ -192,7 +218,7 @@ def _active_assignment_for_driver(uid: str) -> Optional[dict]:
     if not job and not trip:
         return None
     return {
-        "job": _job_with_id(job) if job else None,
+        "job": _job_with_customer(job) if job else None,
         "trip": _trip_with_id(trip) if trip else None,
     }
 
@@ -637,7 +663,7 @@ def accept_job(
             "message": "Job accepted",
             "job_id": job_id,
             "trip_id": trip["id"],
-            "job": _job_with_id(accepted_job),
+            "job": _job_with_customer(accepted_job),
             "trip": _trip_with_id(trip),
         }
     except HTTPException:

@@ -10,7 +10,7 @@ class BottomNav extends StatelessWidget {
   static const _routes = [
     '/dashboard',
     '/wallet-deposit',
-    null,
+    '/messages',
     '/profile',
   ];
 
