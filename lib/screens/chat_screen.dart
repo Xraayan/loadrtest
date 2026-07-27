@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:loadr/constants.dart';
 import 'package:loadr/services/api_service.dart';
@@ -12,6 +14,7 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
+  StreamSubscription<List<Map<String, dynamic>>>? _messageSubscription;
   bool _didLoadArgs = false;
   bool _isLoading = true;
   bool _isSending = false;
@@ -42,6 +45,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _messageSubscription?.cancel();
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -58,6 +62,7 @@ class _ChatScreenState extends State<ChatScreen> {
         uid: uid,
         otherUid: otherUid,
         jobId: _jobId,
+        tripId: _tripId,
       );
       if (!mounted) return;
       setState(() {
@@ -65,6 +70,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _messages = messages;
         _isLoading = false;
       });
+      _startLiveThread(uid, otherUid);
       _scrollToBottom();
     } catch (e) {
       if (!mounted) return;
@@ -73,6 +79,23 @@ class _ChatScreenState extends State<ChatScreen> {
         SnackBar(content: Text('Chat failed: $e')),
       );
     }
+  }
+
+  void _startLiveThread(String uid, String otherUid) {
+    _messageSubscription?.cancel();
+    _messageSubscription = ApiService.streamChatThread(
+      uid: uid,
+      otherUid: otherUid,
+      jobId: _jobId,
+      tripId: _tripId,
+    ).listen(
+      (messages) {
+        if (!mounted) return;
+        setState(() => _messages = messages);
+        _scrollToBottom();
+      },
+      onError: (_) {},
+    );
   }
 
   Future<void> _send() async {
@@ -92,7 +115,7 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       _controller.clear();
       if (!mounted) return;
-      setState(() => _messages = [..._messages, sent]);
+      setState(() => _messages = _upsertMessage(_messages, sent));
       _scrollToBottom();
     } catch (e) {
       if (!mounted) return;
@@ -230,4 +253,19 @@ String _text(Object? value, {String fallback = ''}) {
 String? _nullableText(Object? value) {
   final text = _text(value);
   return text.isEmpty ? null : text;
+}
+
+List<Map<String, dynamic>> _upsertMessage(
+  List<Map<String, dynamic>> messages,
+  Map<String, dynamic> message,
+) {
+  final id = _text(message['id']);
+  if (id.isEmpty) return [...messages, message];
+  final index = messages.indexWhere((item) => _text(item['id']) == id);
+  if (index < 0) return [...messages, message];
+  return [
+    ...messages.take(index),
+    message,
+    ...messages.skip(index + 1),
+  ];
 }

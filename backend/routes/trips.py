@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from dependencies import CurrentUser, get_current_user, require_current_user_uid
+from routes.messages import delete_trip_chat
 from routes.quotes import LocationPoint, _haversine_km
 from supabase_config import get_supabase
 
@@ -178,6 +179,9 @@ def update_trip_status(
                 except Exception:
                     pass
 
+        if next_status == "completed":
+            _delete_chat_for_trip(get_supabase(), trip, job_id)
+
         return {"message": "Trip status updated", "trip": _format_trip(trip)}
     except HTTPException:
         raise
@@ -228,6 +232,7 @@ def pay_trip(
 
         require_current_user_uid(job.get("customer_uid"), current_user)
         if trip.get("status") == "completed":
+            _delete_chat_for_trip(supabase, trip, job_id)
             return {"message": "Payment already completed", "trip": _format_trip(trip)}
         if trip.get("status") != "awaiting_payment":
             raise HTTPException(
@@ -248,6 +253,7 @@ def pay_trip(
         supabase.table("jobs").update(
             {"status": "completed", "updated_at": now}
         ).eq("id", job_id).execute()
+        _delete_chat_for_trip(supabase, trip, job_id)
 
         driver_uid = trip.get("driver_uid")
         if driver_uid:
@@ -270,6 +276,17 @@ def pay_trip(
         raise
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+def _delete_chat_for_trip(supabase, trip: dict, job_id: Optional[str]) -> None:
+    try:
+        delete_trip_chat(
+            supabase=supabase,
+            job_id=job_id or trip.get("job_id"),
+            trip_id=trip.get("id"),
+        )
+    except Exception:
+        pass
 
 
 def _require_driver_near_pickup(trip: dict) -> None:

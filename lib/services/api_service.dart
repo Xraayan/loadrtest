@@ -1231,6 +1231,7 @@ class ApiService {
     required String uid,
     required String otherUid,
     String? jobId,
+    String? tripId,
   }) async {
     try {
       final token = await getAuthToken();
@@ -1238,6 +1239,8 @@ class ApiService {
         queryParameters: {
           'other_uid': otherUid,
           if (jobId != null && jobId.trim().isNotEmpty) 'job_id': jobId.trim(),
+          if (tripId != null && tripId.trim().isNotEmpty)
+            'trip_id': tripId.trim(),
         },
       );
       final response = await http.get(
@@ -1265,6 +1268,57 @@ class ApiService {
       return [];
     } catch (e) {
       throw Exception('Error: $e');
+    }
+  }
+
+  static Stream<List<Map<String, dynamic>>> streamChatThread({
+    required String uid,
+    required String otherUid,
+    String? jobId,
+    String? tripId,
+  }) async* {
+    final client = http.Client();
+    try {
+      final token = await _requireAuthToken();
+      final uri = Uri.parse('$baseUrl/messages/$uid/thread/stream').replace(
+        queryParameters: {
+          'other_uid': otherUid,
+          if (jobId != null && jobId.trim().isNotEmpty) 'job_id': jobId.trim(),
+          if (tripId != null && tripId.trim().isNotEmpty)
+            'trip_id': tripId.trim(),
+        },
+      );
+      final request = http.Request('GET', uri);
+      request.headers.addAll({
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      });
+
+      final response = await client.send(request).timeout(
+            const Duration(seconds: 10),
+          );
+      if (response.statusCode != 200) {
+        throw Exception('Chat stream failed');
+      }
+
+      await for (final line in response.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())) {
+        if (!line.startsWith('data:')) continue;
+        final payload = line.substring(5).trim();
+        if (payload.isEmpty) continue;
+
+        final data = jsonDecode(payload);
+        final messages = data is Map ? data['messages'] : null;
+        if (messages is List) {
+          yield messages
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
+        }
+      }
+    } finally {
+      client.close();
     }
   }
 
