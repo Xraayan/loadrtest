@@ -12,7 +12,14 @@ import 'package:loadr/widgets/skeleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  final bool showBottomNav;
+  final ValueChanged<int>? onTabSelected;
+
+  const DashboardScreen({
+    super.key,
+    this.showBottomNav = true,
+    this.onTabSelected,
+  });
 
   @override
   State<DashboardScreen> createState() => DashboardScreenState();
@@ -282,7 +289,7 @@ class DashboardScreenState extends State<DashboardScreen>
   @override
   Widget build(BuildContext context) {
     if (!_hasLoadedCachedData) {
-      return const _DashboardSkeleton();
+      return _DashboardSkeleton(showBottomNav: widget.showBottomNav);
     }
 
     return Scaffold(
@@ -297,6 +304,10 @@ class DashboardScreenState extends State<DashboardScreen>
               _DashboardHeader(
                 greeting: '${_greeting()}, $_driverName',
                 onProfileTap: () async {
+                  if (widget.onTabSelected != null) {
+                    widget.onTabSelected!(3);
+                    return;
+                  }
                   await Navigator.pushNamed(context, '/profile');
                   if (mounted) _refreshDashboard();
                 },
@@ -338,8 +349,8 @@ class DashboardScreenState extends State<DashboardScreen>
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
                 childAspectRatio: 1.55,
-                children: const [
-                  _DriverActionCard(
+                children: [
+                  const _DriverActionCard(
                     title: 'All Trips',
                     subtitle: 'Manage accepted trips',
                     icon: Icons.route_outlined,
@@ -349,9 +360,13 @@ class DashboardScreenState extends State<DashboardScreen>
                     title: 'Wallet',
                     subtitle: 'View payouts',
                     icon: Icons.account_balance_wallet_outlined,
-                    route: '/wallet-deposit',
+                    route:
+                        widget.onTabSelected == null ? '/wallet-deposit' : null,
+                    onTap: widget.onTabSelected == null
+                        ? null
+                        : () => widget.onTabSelected!(1),
                   ),
-                  _DriverActionCard(
+                  const _DriverActionCard(
                     title: 'Support',
                     subtitle: 'Get help quickly',
                     icon: Icons.support_agent,
@@ -362,7 +377,9 @@ class DashboardScreenState extends State<DashboardScreen>
           ),
         ),
       ),
-      bottomNavigationBar: const BottomNav(selectedIndex: 0),
+      bottomNavigationBar: widget.showBottomNav
+          ? const BottomNav(selectedIndex: 0)
+          : null,
     );
   }
 
@@ -411,7 +428,11 @@ class DashboardScreenState extends State<DashboardScreen>
 }
 
 class _DashboardSkeleton extends StatelessWidget {
-  const _DashboardSkeleton();
+  final bool showBottomNav;
+
+  const _DashboardSkeleton({
+    this.showBottomNav = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -444,7 +465,8 @@ class _DashboardSkeleton extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: const BottomNav(selectedIndex: 0),
+      bottomNavigationBar:
+          showBottomNav ? const BottomNav(selectedIndex: 0) : null,
     );
   }
 }
@@ -877,12 +899,14 @@ class _DriverActionCard extends StatelessWidget {
   final String subtitle;
   final IconData icon;
   final String? route;
+  final VoidCallback? onTap;
 
   const _DriverActionCard({
     required this.title,
     required this.subtitle,
     required this.icon,
     this.route,
+    this.onTap,
   });
 
   @override
@@ -892,7 +916,7 @@ class _DriverActionCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap:
-            route == null ? null : () => Navigator.pushNamed(context, route!),
+            onTap ?? (route == null ? null : () => Navigator.pushNamed(context, route!)),
         borderRadius: BorderRadius.circular(14),
         child: Container(
           padding: const EdgeInsets.all(14),

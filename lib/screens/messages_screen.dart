@@ -4,7 +4,12 @@ import 'package:loadr/services/api_service.dart';
 import 'package:loadr/widgets/bottom_nav.dart';
 
 class MessagesScreen extends StatefulWidget {
-  const MessagesScreen({super.key});
+  final bool showBottomNav;
+
+  const MessagesScreen({
+    super.key,
+    this.showBottomNav = true,
+  });
 
   @override
   State<MessagesScreen> createState() => _MessagesScreenState();
@@ -72,7 +77,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
                 ],
               ),
             ),
-      bottomNavigationBar: const BottomNav(selectedIndex: 2),
+      bottomNavigationBar: widget.showBottomNav
+          ? const BottomNav(selectedIndex: 2)
+          : null,
     );
   }
 }

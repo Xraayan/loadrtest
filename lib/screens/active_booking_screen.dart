@@ -8,6 +8,7 @@ import 'package:loadr/constants.dart';
 import 'package:loadr/models/place_suggestion.dart';
 import 'package:loadr/services/api_service.dart';
 import 'package:loadr/services/supabase_realtime_service.dart';
+import 'package:loadr/widgets/draggable_map_panel.dart';
 import 'package:loadr/widgets/skeleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -426,14 +427,8 @@ class _ActiveBookingScreenState extends State<ActiveBookingScreen> {
               ),
             ),
           ),
-          DraggableScrollableSheet(
-            initialChildSize: 0.42,
-            minChildSize: 0.18,
-            maxChildSize: 0.72,
-            snap: true,
-            snapSizes: const [0.18, 0.42, 0.72],
-            builder: (context, scrollController) => _BookingPanel(
-              scrollController: scrollController,
+          DraggableMapPanel(
+            child: _BookingPanel(
               booking: booking,
               refreshing: _isRefreshing,
               canceling: _isCanceling,
@@ -995,7 +990,6 @@ class _TopBar extends StatelessWidget {
 }
 
 class _BookingPanel extends StatelessWidget {
-  final ScrollController scrollController;
   final Map<String, dynamic> booking;
   final bool refreshing;
   final bool canceling;
@@ -1003,7 +997,6 @@ class _BookingPanel extends StatelessWidget {
   final VoidCallback onMessage;
 
   const _BookingPanel({
-    required this.scrollController,
     required this.booking,
     required this.refreshing,
     required this.canceling,
@@ -1055,7 +1048,8 @@ class _BookingPanel extends StatelessWidget {
           ],
         ),
         child: ListView(
-          controller: scrollController,
+          shrinkWrap: true,
+          physics: const ClampingScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
           children: [
             Center(

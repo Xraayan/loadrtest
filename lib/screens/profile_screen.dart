@@ -4,7 +4,12 @@ import 'package:loadr/services/api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final bool showBackButton;
+
+  const ProfileScreen({
+    super.key,
+    this.showBackButton = true,
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -74,16 +79,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          onPressed: () {
-            if (Navigator.canPop(context)) {
-              Navigator.maybePop(context);
-            } else {
-              Navigator.pushReplacementNamed(context, '/dashboard');
-            }
-          },
-          icon: const Icon(Icons.arrow_back, color: Colors.black87),
-        ),
+        automaticallyImplyLeading: widget.showBackButton,
+        leading: widget.showBackButton
+            ? IconButton(
+                onPressed: () {
+                  if (Navigator.canPop(context)) {
+                    Navigator.maybePop(context);
+                  } else {
+                    Navigator.pushReplacementNamed(context, '/dashboard');
+                  }
+                },
+                icon: const Icon(Icons.arrow_back, color: Colors.black87),
+              )
+            : null,
         title: const Text(
           'Profile',
           style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w800),

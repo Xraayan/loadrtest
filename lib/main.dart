@@ -2,20 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:loadr/screens/active_booking_screen.dart';
 import 'package:loadr/screens/auth_gate.dart';
-import 'package:loadr/screens/dashboard_screen.dart';
 import 'package:loadr/screens/driver_details_screen.dart';
 import 'package:loadr/screens/all_trip_screen.dart';
 import 'package:loadr/screens/customer_details_screen.dart';
+import 'package:loadr/screens/customer_activity_screen.dart';
 import 'package:loadr/screens/customer_home_screen.dart';
 import 'package:loadr/screens/chat_screen.dart';
 import 'package:loadr/screens/driver_active_trip_screen.dart';
-import 'package:loadr/screens/messages_screen.dart';
+import 'package:loadr/screens/driver_shell_screen.dart';
 import 'package:loadr/screens/new_trip_screen.dart';
 import 'package:loadr/screens/driver_load_request_screen.dart';
 import 'package:loadr/screens/profile_screen.dart';
 import 'package:loadr/screens/request_quote_screen.dart';
 import 'package:loadr/screens/request_vehicle_screen.dart';
-import 'package:loadr/screens/wallet_deposit_screen.dart';
 import 'package:loadr/services/supabase_realtime_service.dart';
 import 'constants.dart';
 import 'navigation_observer.dart';
@@ -63,6 +62,7 @@ class LoadRApp extends StatelessWidget {
         '/otp': (context) => const OTPScreen(),
         '/role-selection': (context) => const RoleSelectionScreen(),
         '/customer-details': (context) => const CustomerDetailsScreen(),
+        '/customer-activity': (context) => const CustomerActivityScreen(),
         '/customer-home': (context) => const CustomerHomeScreen(),
         '/active-booking': (context) => const ActiveBookingScreen(),
         '/chat': (context) => const ChatScreen(),
@@ -73,14 +73,14 @@ class LoadRApp extends StatelessWidget {
         '/preferences': (context) => const PreferencesStateScreen(),
         '/upload-license': (context) => const DocumentUploadScreen(),
         '/success': (context) => const ActivationSuccessScreen(),
-        '/dashboard': (context) => const DashboardScreen(),
+        '/dashboard': (context) => const DriverShellScreen(initialIndex: 0),
         '/driver-active-trip': (context) => const DriverActiveTripScreen(),
         '/driver-load-request': (context) => const DriverLoadRequestScreen(),
         '/all-trips': (context) => const AllTripScreen(),
         '/new-trips': (context) => const NewTripScreen(),
-        '/messages': (context) => const MessagesScreen(),
+        '/messages': (context) => const DriverShellScreen(initialIndex: 2),
         '/driver-details': (context) => const DriverDetailsScreen(),
-        '/wallet-deposit': (context) => const WalletDepositScreen(),
+        '/wallet-deposit': (context) => const DriverShellScreen(initialIndex: 1),
         '/profile': (context) => const ProfileScreen(),
       },
     );

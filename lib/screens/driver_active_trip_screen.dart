@@ -9,6 +9,7 @@ import 'package:loadr/models/place_suggestion.dart';
 import 'package:loadr/models/ride_quote.dart';
 import 'package:loadr/services/api_service.dart';
 import 'package:loadr/services/supabase_realtime_service.dart';
+import 'package:loadr/widgets/draggable_map_panel.dart';
 import 'package:loadr/widgets/skeleton.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -335,14 +336,8 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
               ),
             ),
           ),
-          DraggableScrollableSheet(
-            initialChildSize: 0.42,
-            minChildSize: 0.18,
-            maxChildSize: 0.72,
-            snap: true,
-            snapSizes: const [0.18, 0.42, 0.72],
-            builder: (context, scrollController) => _TripPanel(
-              scrollController: scrollController,
+          DraggableMapPanel(
+            child: _TripPanel(
               job: job,
               estimate: estimate,
               distanceToNextKm: distanceToNextKm,
@@ -655,7 +650,6 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen>
 }
 
 class _TripPanel extends StatelessWidget {
-  final ScrollController scrollController;
   final Map<String, dynamic> job;
   final RideEstimate estimate;
   final double distanceToNextKm;
@@ -670,7 +664,6 @@ class _TripPanel extends StatelessWidget {
   final VoidCallback onMessage;
 
   const _TripPanel({
-    required this.scrollController,
     required this.job,
     required this.estimate,
     required this.distanceToNextKm,
@@ -713,7 +706,8 @@ class _TripPanel extends StatelessWidget {
           ],
         ),
         child: ListView(
-          controller: scrollController,
+          shrinkWrap: true,
+          physics: const ClampingScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
           children: [
             Center(

@@ -3,11 +3,16 @@ import 'package:loadr/widgets/nav_item.dart';
 
 class BottomNav extends StatelessWidget {
   final int selectedIndex;
+  final ValueChanged<int>? onSelect;
 
-  const BottomNav({super.key, required this.selectedIndex});
+  const BottomNav({
+    super.key,
+    required this.selectedIndex,
+    this.onSelect,
+  });
 
   // Map each index to its named route
-  static const _routes = [
+  static const List<String> _routes = [
     '/dashboard',
     '/wallet-deposit',
     '/messages',
@@ -50,8 +55,11 @@ class BottomNav extends StatelessWidget {
                   onTap: () {
                     // Don't navigate if already on this tab
                     if (i == selectedIndex) return;
+                    if (onSelect != null) {
+                      onSelect!(i);
+                      return;
+                    }
                     final route = _routes[i];
-                    if (route == null) return;
                     Navigator.pushReplacementNamed(context, route);
                   },
                   child: Column(

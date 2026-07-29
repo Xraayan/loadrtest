@@ -4,7 +4,14 @@ import 'package:loadr/services/api_service.dart';
 import 'package:loadr/widgets/bottom_nav.dart';
 
 class WalletDepositScreen extends StatefulWidget {
-  const WalletDepositScreen({super.key});
+  final bool showBottomNav;
+  final bool showBackButton;
+
+  const WalletDepositScreen({
+    super.key,
+    this.showBottomNav = true,
+    this.showBackButton = true,
+  });
 
   @override
   State<WalletDepositScreen> createState() => _WalletDepositScreenState();
@@ -54,17 +61,20 @@ class _WalletDepositScreenState extends State<WalletDepositScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFFF7F7F7),
         elevation: 0,
-        leading: IconButton(
-          tooltip: 'Back',
-          onPressed: () {
-            if (Navigator.canPop(context)) {
-              Navigator.maybePop(context);
-            } else {
-              Navigator.pushReplacementNamed(context, '/dashboard');
-            }
-          },
-          icon: const Icon(Icons.arrow_back, color: Colors.black87),
-        ),
+        automaticallyImplyLeading: widget.showBackButton,
+        leading: widget.showBackButton
+            ? IconButton(
+                tooltip: 'Back',
+                onPressed: () {
+                  if (Navigator.canPop(context)) {
+                    Navigator.maybePop(context);
+                  } else {
+                    Navigator.pushReplacementNamed(context, '/dashboard');
+                  }
+                },
+                icon: const Icon(Icons.arrow_back, color: Colors.black87),
+              )
+            : null,
         title: const Text(
           'Wallet',
           style: TextStyle(
@@ -99,7 +109,9 @@ class _WalletDepositScreenState extends State<WalletDepositScreen> {
                 ),
               ),
             ),
-      bottomNavigationBar: const BottomNav(selectedIndex: 1),
+      bottomNavigationBar: widget.showBottomNav
+          ? const BottomNav(selectedIndex: 1)
+          : null,
     );
   }
 

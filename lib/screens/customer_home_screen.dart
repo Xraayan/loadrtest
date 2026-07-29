@@ -16,6 +16,7 @@ class CustomerHomeScreen extends StatefulWidget {
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   String _displayName = 'Customer';
   List<Map<String, dynamic>> _activeBookings = [];
+  List<Map<String, dynamic>> _activityTrips = [];
   bool _isLoadingHome = true;
 
   Map<String, dynamic>? get _activeBooking =>
@@ -44,10 +45,22 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
       final uid = prefs.getString('uid');
       if (uid != null && uid.trim().isNotEmpty) {
-        final backendBookings = await ApiService.getCustomerActiveJobs(uid);
-        await _cacheActiveBookings(prefs, backendBookings);
-        if (!mounted) return;
-        setState(() => _activeBookings = backendBookings);
+        try {
+          final backendBookings = await ApiService.getCustomerActiveJobs(uid);
+          await _cacheActiveBookings(prefs, backendBookings);
+          if (!mounted) return;
+          setState(() => _activeBookings = backendBookings);
+        } catch (_) {
+          // Keep cached active bookings if the backend is temporarily unavailable.
+        }
+
+        try {
+          final trips = await ApiService.getTrips(uid);
+          if (!mounted) return;
+          setState(() => _activityTrips = _completedTripsOnly(trips));
+        } catch (_) {
+          // Keep the activity section empty if trip history is unavailable.
+        }
       }
     } catch (_) {
       // Keep cached dashboard data while the backend is unavailable.
@@ -104,6 +117,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     await prefs.setString('active_booking', jsonEncode(booking));
     if (!mounted) return;
     await Navigator.pushNamed(context, '/active-booking');
+    if (mounted) _loadHeader();
+  }
+
+  Future<void> _openActivity() async {
+    await Navigator.pushNamed(context, '/customer-activity');
     if (mounted) _loadHeader();
   }
 
@@ -201,9 +219,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                   context,
                                   '/request-vehicle',
                                 );
-                                if (mounted) {
-                                  _loadHeader();
-                                }
+                                if (mounted) _loadHeader();
                               },
                               icon: const Icon(
                                 Icons.add_road,
@@ -252,10 +268,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                               ? null
                               : () => _openActiveBooking(_activeBooking!),
                         ),
-                        const _CustomerActionCard(
-                          title: 'Saved Places',
-                          subtitle: 'Pickup and drop points',
-                          icon: Icons.bookmark_border,
+                        _CustomerActionCard(
+                          title: 'Activity',
+                          subtitle: _activityTrips.isEmpty
+                              ? 'Completed trips'
+                              : _activityTrips.length == 1
+                                  ? '1 completed trip'
+                                  : '${_activityTrips.length} completed trips',
+                          icon: Icons.history,
+                          active: _activityTrips.isNotEmpty,
+                          onTap: _openActivity,
                         ),
                         const _CustomerActionCard(
                           title: 'Quotes',
@@ -462,10 +484,12 @@ class _ActiveBookingCard extends StatelessWidget {
     final pickup = _shortLocation('${booking['pickup_location'] ?? ''}');
     final drop = _shortLocation('${booking['dropoff_location'] ?? ''}');
     final vehicleType = '${booking['vehicle_type'] ?? 'Vehicle'}';
-    final amount = _asDouble(booking['amount']);
     final distanceKm = _asDouble(booking['distance_km']);
     final statusLabel = _bookingStatusLabel(booking);
     final accepted = _bookingAccepted(booking);
+    final amount = _asDouble(
+      booking['total_price'] ?? booking['price'] ?? booking['amount'],
+    );
 
     return InkWell(
       onTap: onTap,
@@ -792,4 +816,26 @@ bool _bookingAccepted(Map<String, dynamic> booking) {
       status == 'awaiting_payment' ||
       status == 'completed' ||
       '${booking['assigned_driver_uid'] ?? ''}'.trim().isNotEmpty;
+}
+
+List<Map<String, dynamic>> _completedTripsOnly(List<dynamic> trips) {
+  final completed = trips
+      .whereType<Map>()
+      .map((trip) => Map<String, dynamic>.from(trip))
+      .where(
+        (trip) => '${trip['status'] ?? ''}'.trim().toLowerCase() == 'completed',
+      )
+      .toList();
+  completed.sort((a, b) => _tripTimestamp(b).compareTo(_tripTimestamp(a)));
+  return completed;
+}
+
+DateTime _tripTimestamp(Map<String, dynamic> trip) {
+  for (final key in ['completed_at', 'updated_at', 'created_at']) {
+    final value = '${trip[key] ?? ''}'.trim();
+    if (value.isEmpty) continue;
+    final parsed = DateTime.tryParse(value);
+    if (parsed != null) return parsed;
+  }
+  return DateTime.fromMillisecondsSinceEpoch(0);
 }
